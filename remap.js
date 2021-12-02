@@ -45,16 +45,18 @@ var cache = {
 };
 
 
-export default function remap (jsonDataset, instructions, {context, onMap}) {
+export default function remap (jsonDataset, instructions, context = null, onMap = null) {
 
-	if (typeof context !== 'undefined' && Object.keys(context).length)
+	if (context && Object.keys(context).length)
 		cache.context = context;
 
-	if (typeof onMap !== 'undefined' && Object.keys(onMap).length)
+	if (onMap && Object.keys(onMap).length)
 		cache.onMap = onMap;
 
 	parseInstructions(instructions);
-	console.log(cache)
+	//
+	// console.log(cache); // Uncomment to reveal internal state
+	//
 	parseData(cache.pathTree, jsonDataset);
 
 	var results = cache.results;
@@ -79,31 +81,37 @@ export default function remap (jsonDataset, instructions, {context, onMap}) {
 
 var parseData = function(pathTree, jsonDataset, currentPath = {}) {
 	var currentKey = (Object.keys(currentPath).length) ? flattenPath(currentPath) : "",
-			pathKeys = (typeof pathTree === 'object') ? Object.keys(pathTree) : null;
+			pathKeys = (isObject(pathTree)) ? Object.keys(pathTree) : null;
 
-	if (pathKeys) {
+
+	 //
+	// Exclude object from remapping on match ...
+
+	if (typeof cache.excludeRules[currentKey] === 'undefined')
+		cache.excludeRules[currentKey] = false;
+
+	if (pathKeys.includes('__excludeOnMatch')) {
+		var excludeRules = pathTree['__excludeOnMatch'];
+
+		if (isArray(excludeRules)) {
+			for (var i = 0; i < excludeRules.length; i++) {
+				var rule = excludeRules[i];
+
+				if (typeof rule === 'string') {
+					if (Object.keys(jsonDataset).includes( removeDotPrefix(rule) )){
+						cache.excludeRules[currentKey] = true;
+						return false;
+					}
+				} // else: [to-do]
+			};
+		}
+	} else {
+		cache.excludeRules[currentKey] = false;
+	}
+
+
+	if (pathKeys && cache.excludeRules[currentKey] == false) {
 		pathKeys.forEach((pathKey) => {
-
-			var struct = -1,
-			    object = (pathTree[pathKey] != null && typeof pathTree[pathKey] !== undefined)
-			    	? pathTree[pathKey] : undefined;
-
-			if (typeof object === 'object') {
-				for (var i = 0; i < Object.keys(object).length; i++) {
-					if (struct == -1)
-			    	struct = (struct == -1) ? conditionalStruct.indexOf(Object.keys(object)[i]) : -1;
-			    else
-			    	break;
-				}
-			}
-
-
-			if (!Object.keys(currentPath).length) {
-				var nextKey = { [pathKey]: null }
-			} else {
-				var nextKey = mergeDistinctPaths(currentPath, pathKey);
-			}
-
 
 			 //
 			// Skip if a path isn't found in JSON object
@@ -116,41 +124,174 @@ var parseData = function(pathTree, jsonDataset, currentPath = {}) {
 				return false;
 
 
-
 			 //
-			// Exclude object from remapping on match ...
+			// Config on pathKey loop
 
-			if (typeof cache.excludeRules[currentKey] === 'undefined')
-				cache.excludeRules[currentKey] = false;
+			var conditions = (isArray(pathTree[pathKey])) ? pathTree[pathKey] : null,
+			    iCondition = -1,
+			    object = (isObject(pathTree[pathKey])) ? pathTree[pathKey] : null;
 
-			if (struct == -1) {				
-				if (pathKeys.includes('__excludeOnMatch')) {
-					var excludeRules = pathTree['__excludeOnMatch'];
 
-					if (isArray(excludeRules)) {
-						excludeRules.forEach((rule) => {
+			if (!Object.keys(currentPath).length)
+				var nextKey = { [pathKey]: null }
+			else
+				var nextKey = mergeDistinctPaths(currentPath, pathKey);
 
-							if (typeof rule === 'string') {
-								if (Object.keys(jsonDataset).includes( removeDotPrefix(rule) )){
-									cache.excludeRules[currentKey] = true;
-								}
-							} else {
-								// [to-do] //
-							}
-						});
+
+			if (conditions) {
+				conditions.forEach((condition) => {
+					iCondition++;
+
+					var struct = -1;
+					if (isObject(condition)) {
+						for (var i = 0; i < Object.keys(condition).length; i++) {
+							if (struct == -1)
+					    	struct = (struct == -1) ? conditionalStruct.indexOf(Object.keys(condition)[i]) : -1;
+					    else
+					    	break;
+						}
 					}
-				} else {
-					cache.excludeRules[currentKey] = false;
-				}
+
+
+					 //
+					// Conditional struct with possible embedded variables
+
+					if (struct != -1 &&
+					    ('.' == pathKey.charAt(0))) {
+
+						if (isArray(condition[ conditionalStruct[struct] ]) && 
+						    'undefined' !== typeof jsonDataset[ removeDotPrefix(pathKey) ] &&
+						    'object' !== typeof jsonDataset[ removeDotPrefix(pathKey) ]) {
+
+							var input = jsonDataset[ removeDotPrefix(pathKey) ],
+							    buffer,
+							    result = {};
+
+							// Type check and transforms
+							if (typeof condition['__type'] === 'string')
+								var validator = validateType(condition['__type']);
+							if (typeof condition['__type'] === 'function')
+								var validator = condition['__type'];
+							if (typeof validator !== 'undefined')
+								input = validator.call(null, input);
+
+							if (input) {
+								for (var i = 0; i < condition[ conditionalStruct[struct] ].length; i++) {
+
+									var conditionObj = condition[ conditionalStruct[struct] ][i],
+									    keys = Object.keys(condition[ conditionalStruct[struct] ][i]);
+
+									if (isObject(conditionObj)) {
+										if (typeof conditionObj['regex'] !== 'undefined') {
+											var embeddedVars = getEmbeddedVars(conditionObj['regex']),
+											    regex = conditionObj['regex'],
+											    error = false;
+
+											if (embeddedVars.length) {
+												embeddedVars.forEach((variable) => {
+
+													if (typeof cache.context[variable] !== 'undefined') {
+														regex = regex.replace('{'+variable+'}', cache.context[variable])
+													} else {
+														error = true
+														cache.errors.push({'Missing context': variable})
+													}
+												})
+											}
+
+											if (!error) {
+												var buffer = jsonDataset[ removeDotPrefix(pathKey) ].match(regex, 'i'),
+												    obj = condition[ conditionalStruct[struct] ],
+												    objClone = {};
+
+												if ('__oneOf' == conditionalStruct[struct]) {
+													if (buffer) {
+														for (var j = 0; j < keys.length; j++) {
+
+															if (typeof obj[i][j] !== 'undefined') {
+																result = {...result, ...{ [obj[i][j]]: buffer[j+1] }}
+															}
+
+															if (!isNumber(keys[j]) && 
+															    keys[j] !== 'regex') {
+																objClone = {...objClone, ...{ [keys[j]]: obj[i][keys[j]] }};
+															}
+														}
+														result = {...objClone, ...result}
+														break;
+													}
+												}
+												/*
+												if ('__anyOf' == conditionalStruct[struct]) {
+													var buffer = jsonDataset[ removeDotPrefix(pathKey) ].match(regex, 'i') // [to-do] //
+												}
+												*/
+											}
+										}
+									}
+								};
+							}
+
+							if (Object.keys(result).length) {
+								if (typeof cache.remap[currentKey +" "+ pathKey] !== 'undefined') {
+
+									var remap = popFirstKeyItem(cache.remap[currentKey +" "+ pathKey][iCondition]),
+									    order = Object.keys(cache.remap).indexOf(currentKey +" "+ pathKey);
+
+									if(typeof cache.objects[remap[0]] === 'undefined')
+										cache.objects[remap[0]] = [];
+
+									if(isArray(remap)) {
+										var merge = transformToPath(removeDotPrefix(remap[1]), result);
+										    merge["__order"] = order;
+
+										cache.objects[remap[0]].push(mergePathTree(cache.objects[remap[0]], merge))
+									}
+								}
+							}
+						}
+					}
+
+
+					 //
+					// This is the leaf, ants
+
+					if (typeof condition === 'function' || typeof condition === 'undefined') {
+
+						var result,
+						    input = (typeof jsonDataset[ removeDotPrefix(pathKey) ] !== 'undefined')
+						  ? jsonDataset[ removeDotPrefix(pathKey) ] : null;
+
+						if (typeof condition === 'function')
+							result = condition.call(null, input);
+						else
+							result = input;
+
+						if (typeof cache.remap[currentKey +" "+ pathKey] !== 'undefined' &&
+						    result !== false) {
+
+							var remap = popFirstKeyItem(cache.remap[currentKey +" "+ pathKey][iCondition]),
+							    order = Object.keys(cache.remap).indexOf(currentKey +" "+ pathKey);
+
+							if(typeof cache.objects[remap[0]] === 'undefined')
+								cache.objects[remap[0]] = [];
+
+							if(isArray(remap) && typeof result !== 'undefined') {
+								var merge = transformToPath(removeDotPrefix(remap[1]), result);
+								    merge["__order"] = order;
+
+								cache.objects[remap[0]].push(mergePathTree(cache.objects[remap[0]], merge))
+							}
+						}
+					}
+
+					 //
+					// End of "condition" loop
+				});
 			}
 
 
-
-			 //
-			// Continue when no exclude rules are present
-
-			if (typeof cache.excludeRules[currentKey] !== 'undefined' &&
-			    false == cache.excludeRules[currentKey]) {
+			if (object) {
 
 				 //
 				// The loop
@@ -162,149 +303,15 @@ var parseData = function(pathTree, jsonDataset, currentPath = {}) {
 					});
 				}
 
-
 				 //
-				// Conditional struct with possible embedded variables
+				// The path
 
-				if (struct != -1 &&
-				    ('.' == pathKey.charAt(0))) {
-
-					if (isArray(object[ conditionalStruct[struct] ]) && 
-					    'undefined' !== typeof jsonDataset[ removeDotPrefix(pathKey) ] &&
-					    'object' !== typeof jsonDataset[ removeDotPrefix(pathKey) ]) {
-
-						var input = jsonDataset[ removeDotPrefix(pathKey) ],
-						    buffer,
-						    result = {};
-
-						// Type check and transforms
-						if (typeof object['__type'] === 'string')
-							var validator = validateType(object['__type']);
-						if (typeof object['__type'] === 'function')
-							var validator = object['__type'];
-						if (typeof validator !== 'undefined')
-							input = validator.call(null, input);
-
-						if (input) {
-							for (var i = 0; i < object[ conditionalStruct[struct] ].length; i++) {
-								var condition = object[ conditionalStruct[struct] ][i],
-								    keys = Object.keys(object[ conditionalStruct[struct] ][i]);
-
-								if (isObject(condition)) {
-									if (typeof condition['regex'] !== 'undefined') {
-										var embeddedVars = getEmbeddedVars(condition['regex']),
-										    regex = condition['regex'],
-										    error = false;
-
-										if (embeddedVars.length) {
-											embeddedVars.forEach((variable) => {
-
-												if (typeof cache.context[variable] !== 'undefined') {
-													regex = regex.replace('{'+variable+'}', cache.context[variable])
-												} else {
-													error = true
-													cache.errors.push({'Missing context': variable})
-												}
-											})
-										}
-
-										if (!error) {
-											var buffer = jsonDataset[ removeDotPrefix(pathKey) ].match(regex, 'i'),
-											    obj = object[ conditionalStruct[struct] ],
-											    objClone = {};
-
-											if ('__oneOf' == conditionalStruct[struct]) {
-												if (buffer) {
-													for (var j = 0; j < keys.length; j++) {
-
-														if (typeof obj[i][j] !== 'undefined') {
-															result = {...result, ...{ [obj[i][j]]: buffer[j+1] }}
-														}
-
-														if (!isNumber(keys[j]) && 
-														    keys[j] !== 'regex') {
-															objClone = {...objClone, ...{ [keys[j]]: obj[i][keys[j]] }};
-														}
-													}
-													result = {...objClone, ...result}
-													break;
-												}
-											}
-											/*
-											if ('__anyOf' == conditionalStruct[struct]) {
-												var buffer = jsonDataset[ removeDotPrefix(pathKey) ].match(regex, 'i') // [to-do] //
-											}
-											*/
-										}
-									}
-								}
-							};
-						}
-
-						if (Object.keys(result).length) {
-							if (typeof cache.remap[currentKey +" "+ pathKey] !== 'undefined') {
-
-								var remap = popFirstKeyItem(cache.remap[currentKey +" "+ pathKey]),
-								    order = Object.keys(cache.remap).indexOf(currentKey +" "+ pathKey);
-
-								if(typeof cache.objects[remap[0]] === 'undefined')
-									cache.objects[remap[0]] = [];
-
-								if(isArray(remap)) {
-									var merge = transformToPath(removeDotPrefix(remap[1]), result);
-									    merge["__order"] = order;
-
-									cache.objects[remap[0]].push(mergePathTree(cache.objects[remap[0]], merge))
-								}
-							}
-						}
-					}
-				}
-
-
-				 //
-				// Continue
-
-				if (object &&
-				    ('.' == pathKey.charAt(0))) {
+				if ('.' == pathKey.charAt(0)) {
 
 					if (typeof jsonDataset[ removeDotPrefix(pathKey) ] !== 'undefined') {
 						parseData(pathTree[pathKey], jsonDataset[ removeDotPrefix(pathKey) ], nextKey)
 					}
 				}	
-
-
-				 //
-				// This is the leaf, ants
-
-				if (typeof object === 'function' || typeof object === 'undefined') {
-
-					var result,
-					    input = (typeof jsonDataset[ removeDotPrefix(pathKey) ] !== 'undefined')
-					  ? jsonDataset[ removeDotPrefix(pathKey) ] : null;
-
-					if (typeof object === 'function')
-						result = object.call(null, input);
-					else
-						result = input;
-
-					if (typeof cache.remap[currentKey +" "+ pathKey] !== 'undefined' &&
-					    result !== false) {
-
-						var remap = popFirstKeyItem(cache.remap[currentKey +" "+ pathKey]),
-						    order = Object.keys(cache.remap).indexOf(currentKey +" "+ pathKey);
-
-						if(typeof cache.objects[remap[0]] === 'undefined')
-							cache.objects[remap[0]] = [];
-
-						if(isArray(remap) && typeof result !== 'undefined') {
-							var merge = transformToPath(removeDotPrefix(remap[1]), result);
-							    merge["__order"] = order;
-
-							cache.objects[remap[0]].push(mergePathTree(cache.objects[remap[0]], merge))
-						}
-					}
-				}
 			}
 
 		});
@@ -313,8 +320,7 @@ var parseData = function(pathTree, jsonDataset, currentPath = {}) {
 		 //
 		// Wrapping up after looping all properties at a level
 
-		if (typeof cache.this[currentKey] !== 'undefined' && 
-		    cache.excludeRules[currentKey] == false) {
+		if (typeof cache.this[currentKey] !== 'undefined') {
 			var objectRef = cache.this[currentKey]
 
 			linkObjects(cache.this[currentKey], cache.thisRemap[objectRef])
@@ -369,7 +375,7 @@ var linkObjects = function (thisObjectRef, thisRemap) {
   if (typeof cache.onMap !== 'undefined' &&
  	    typeof cache.onMap[thisObjectRef] === 'function') {
 
-  	cache.onMap[thisObjectRef].call(null, thisObjectRef, createObject);
+  	cache.onMap[thisObjectRef].call(null, thisObjectRef, createObject, cache.results.length);
   }
 
 
@@ -519,10 +525,13 @@ var parseInstructions = function (instructions, currentPath = {}) {
 
 
 					if (isCurrentObject !== -1) {
+						if (typeof cache.remap[remapKey] === 'undefined')
+							cache.remap[remapKey] = [];
+
 						if (remap) {
-							cache.remap[remapKey] = objectRef +" "+ remap[1];
+							cache.remap[remapKey].push(objectRef +" "+ remap[1]);
 						} else {
-							cache.remap[currentKey +" "+ instructionKey] = objectRef +" "+ instructionKey;
+							cache.remap[currentKey +" "+ instructionKey].push(objectRef +" "+ instructionKey);
 						}
 					}/* else {
 
@@ -547,9 +556,9 @@ var parseInstructions = function (instructions, currentPath = {}) {
 					}*/
 
 					if (remap)
-						var path = mergeDistinctPaths(transformToPath(currentKey), transformToPath(remap[0], object));
+						var path = mergeDistinctPaths(transformToPath(currentKey), transformToPath(remap[0], [object]));
 					else
-						var path = mergeDistinctPaths(transformToPath(currentKey), transformToPath(instructionKey, object));
+						var path = mergeDistinctPaths(transformToPath(currentKey), transformToPath(instructionKey, [object]));
 
 					cache.pathTree = mergePathTree(cache.pathTree, path);
 
@@ -600,7 +609,10 @@ var parseInstructions = function (instructions, currentPath = {}) {
 
 			if ('remap' == instructionKey && typeof object === 'string') {
 				if (getObjectRef(object)) {
-					cache.remap[ currentKey ] = spaceBeforeDot(object);
+					if (typeof cache.remap[ currentKey ] === 'undefined')
+						cache.remap[ currentKey ] = [];
+
+					cache.remap[ currentKey ].push(spaceBeforeDot(object));
 					return;
 				}
 			}
@@ -619,19 +631,22 @@ var parseInstructions = function (instructions, currentPath = {}) {
 				var remap = getRemapKeys(instructionKey),
 				    objectRef = getObjectRef(remap[1]);
 
+				if (typeof cache.remap[currentKey +" "+ remap[0]] === 'undefined')
+					cache.remap[currentKey +" "+ remap[0]] = [];
+
 				if (objectRef) {
 					if (Object.keys(cache.currentObjects).indexOf(objectRef) !== -1)
-						cache.remap[ currentKey +" "+ remap[0] ] = spaceBeforeDot(remap[1]);
+						cache.remap[ currentKey +" "+ remap[0] ].push(spaceBeforeDot(remap[1]));
 
 				} else {
 					objectRef = arrayLastItem(Object.keys(cache.currentObjects));
 					if (objectRef) {
 						if (cache.currentObjects[ objectRef ]) {
-							cache.remap[ currentKey +" "+ remap[0] ] = 
-								objectRef +" "+ flattenPath(cache.currentObjects[objectRef]) +" "+ remap[1];
+							cache.remap[ currentKey +" "+ remap[0] ]
+							.push( objectRef +" "+ flattenPath(cache.currentObjects[objectRef]) +" "+ remap[1] );
 						} else {
-							cache.remap[ currentKey +" "+ remap[0] ] = 
-								objectRef +" "+ remap[1];
+							cache.remap[ currentKey +" "+ remap[0] ]
+							.push( objectRef +" "+ remap[1] );
 						}
 					}
 				}
@@ -642,8 +657,13 @@ var parseInstructions = function (instructions, currentPath = {}) {
 			// Defined object and remap by its rule
 
 			if (instructions['this'] && !isInlineRemap(instructionKey) && instructionKey !== 'remap') {
-				if (cache.currentObjects[instructions['this']] !== 'undefined')
-					cache.remap[ currentKey +" "+ instructionKey ] = instructions['this'] +" "+ instructionKey;
+				if (cache.currentObjects[instructions['this']] !== 'undefined') {
+					if (typeof cache.remap[ currentKey +" "+ instructionKey ] === 'undefined')
+						cache.remap[ currentKey +" "+ instructionKey ] = [];
+
+					cache.remap[ currentKey +" "+ instructionKey ]
+					.push( instructions['this'] +" "+ instructionKey );
+				}
 			}
 
 
@@ -652,8 +672,11 @@ var parseInstructions = function (instructions, currentPath = {}) {
 
 			if (instructions['remap'] && !isInlineRemap(instructionKey) && instructionKey !== 'remap' && !instructions['this']) {
 				if (cache.currentObjects) {
-					cache.remap[ currentKey +" "+ instructionKey ] = 
-						spaceBeforeDot(instructions['remap']) +" "+ instructionKey;
+					if (typeof cache.remap[ currentKey +" "+ instructionKey ] === 'undefined')
+						cache.remap[ currentKey +" "+ instructionKey ] = [];
+
+					cache.remap[ currentKey +" "+ instructionKey ]
+					.push( spaceBeforeDot(instructions['remap']) +" "+ instructionKey );
 				}
 			}
 
@@ -665,12 +688,15 @@ var parseInstructions = function (instructions, currentPath = {}) {
 				} else {
 					objectRef = arrayLastItem(Object.keys(cache.currentObjects));
 					if (objectRef) {
+						if (typeof cache.remap[ currentKey +" "+ instructionKey ])
+							cache.remap[ currentKey +" "+ instructionKey ] = [];
+
 						if (cache.currentObjects[ objectRef ]) {
-							cache.remap[ currentKey +" "+ instructionKey ] = 
-								objectRef +" "+ flattenPath(cache.currentObjects[objectRef]) +" "+ instructionKey;
+							cache.remap[ currentKey +" "+ instructionKey ]
+							.push( objectRef +" "+ flattenPath(cache.currentObjects[objectRef]) +" "+ instructionKey );
 						} else {
-							cache.remap[ currentKey +" "+ instructionKey ] = 
-								objectRef +" "+ instructionKey;
+							cache.remap[ currentKey +" "+ instructionKey ]
+							.push( objectRef +" "+ instructionKey );
 						}
 					}
 				}
@@ -680,13 +706,13 @@ var parseInstructions = function (instructions, currentPath = {}) {
 				// Right-hand object contains a schema definition
 
 				if (typeof object === 'string') {
-					var objectPath = transformToPath(currentKey +" "+ instructionKey, validateType(object));
+					var objectPath = transformToPath(currentKey +" "+ instructionKey, [validateType(object)]);
 					cache.pathTree = mergePathTree(cache.pathTree, objectPath);
 					return;
 				}
 
 				if (typeof object === 'function') {
-					var objectPath = transformToPath(currentKey +" "+ instructionKey, object);
+					var objectPath = transformToPath(currentKey +" "+ instructionKey, [object]);
 					cache.pathTree = mergePathTree(cache.pathTree, objectPath);
 					return;
 				}
@@ -696,7 +722,7 @@ var parseInstructions = function (instructions, currentPath = {}) {
 				// Right-hand object can be of any type
 
 				if (object === null) {
-					var objectPath = transformToPath(currentKey +" "+ instructionKey, null);
+					var objectPath = transformToPath(currentKey +" "+ instructionKey, [null]);
 					cache.pathTree = mergePathTree(cache.pathTree, objectPath);
 					return;
 				}
@@ -787,7 +813,6 @@ var transformToPath = function (key, object = undefined) {
 			}
 		} else {
 			if (object !== undefined) {
-				console.log()
 				path = {
 					[instruction]: object
 				}
@@ -830,8 +855,9 @@ var mergePathTree = function (pathTree, mergePath) {
 
 	var keys = Object.keys(mergePath);
 
-	if (pathTree) {
-		if (typeof pathTree[ keys[0] ] !== 'undefined') {
+	if (isObject(pathTree) && typeof pathTree[ keys[0] ] !== 'undefined') {
+		if (!isArray(pathTree[ keys[0] ])) {
+
 			pathTree[ keys[0] ] = { 
 				...pathTree[ keys[0] ], 
 				...mergePathTree(pathTree[ keys[0].trim() ], mergePath[ keys[0].trim() ]) 
@@ -839,10 +865,13 @@ var mergePathTree = function (pathTree, mergePath) {
 			return pathTree;
 		}
 
-		if(typeof pathTree === 'string' && pathTree == keys[0]) {
-			return mergePathTree(null, mergePath);
+		if (isArray(pathTree[ keys[0] ]) && isArray(mergePath[ keys[0] ])) {
+			return {
+				[keys[0]]: pathTree[keys[0]].concat(mergePath[keys[0]])
+			}
 		}
 	}
+
 
 	return mergePath
 }
@@ -912,6 +941,14 @@ var popFirstKeyItem = function (key) {
 	var firstSpace = key.indexOf(" ");
 	if (firstSpace) {
 		return [key.substring(0, firstSpace), key.substring(firstSpace+1)]
+	}
+}
+
+
+var popLastKeyItem = function (key) {
+	var lastSpace = key.lastIndexOf(" ");
+	if (lastSpace) {
+		return [key.substring(lastSpace+1), key.substring(0, lastSpace+1)]
 	}
 }
 
