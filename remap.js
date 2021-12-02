@@ -862,6 +862,7 @@ export class remap {
 
 
 
+
 /*
 
   # Utilities
@@ -1196,7 +1197,6 @@ var getEmbeddedVars = function (string) {
 
 
 
-
  //
 // Auxiliary
 
@@ -1262,6 +1262,7 @@ var removeDoubleSpace = function (string) {
 
 	return string.trim();
 }
+
 
 
 
