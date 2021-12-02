@@ -6,46 +6,49 @@
 
 export { remap, parseInstructions, mergePathTree, mergeDistinctPaths, transformToPath, flattenPath }
 
-var conditionalStruct = ['__oneOf', '__anyOf'];
+var conditionalStruct = ['__oneOf']; // __anyOf
 var conditionalType = ['__type'];
-var conditionalKey = ['__excludeOnMatch'];
-
-
-var cache = {
-
-	// Context variables
-	context: {},
-
-	// Defined paths to traverse (with schema definitions)
-	pathTree: {},
-
-	// Declared objects, mapped to originating paths
-	this: {},
-
-	// Objects, currently in processing (defined with "this")
-	currentObjects: {},
-
-	// Original schema with mappings to objects
-	remap: {},
-
-	// Instructions with links among declared objects
-	thisRemap: {},
-
-	// Temporary objects, before linking and sorting
-	objects: {},
-
-	// Custom handles on created objects
-	onMap: {},
-
-	// Per-object exclude rules as defined with remap schema 
-	excludeRules: {},
-
-	results: null,
-	errors: []
-};
-
+var conditionalKey = ['__excludeOnKeyMatch'];
+ 
+var cache = {};
 
 export default function remap (jsonDataset, instructions, context = null, onMap = null) {
+
+	cache = {
+
+		// Context variables
+		context: {},
+
+		// Defined paths to traverse (with schema definitions)
+		pathTree: {},
+
+		// Declared objects, mapped to originating paths
+		this: {},
+
+		// Objects, currently in processing (defined with "this")
+		currentObjects: {},
+
+		// Original schema with mappings to objects
+		remap: {},
+
+		// Instructions with links among declared objects
+		thisRemap: {},
+
+		// Temporary objects, before linking and sorting
+		objects: {},
+
+		// Custom handles on created objects
+		onMap: {},
+
+		// Exclude rules as defined with remap schema 
+		excludeRules: {},
+
+		// Temporary instructions to exclude objects
+		exclude: {},
+
+		results: null,
+		errors: []
+	};
 
 	if (context && Object.keys(context).length)
 		cache.context = context;
@@ -59,8 +62,11 @@ export default function remap (jsonDataset, instructions, context = null, onMap 
 	//
 	parseData(cache.pathTree, jsonDataset);
 
-	var results = cache.results;
+	return cache.results;
+}
 
+
+export function preparse (instructions, context = {}) {
 	cache = {
 		context: {},
 		pathTree: {},
@@ -71,46 +77,61 @@ export default function remap (jsonDataset, instructions, context = null, onMap 
 		objects: {},
 		onMap: {},
 		excludeRules: {},
+		exclude: {},
 		results: null,
 		errors: []
-	}
+	};
 
-	return results;
+	if (context && Object.keys(context).length)
+		cache.context = context;
+
+	parseInstructions(instructions);
+
+	return cache;
 }
 
 
-var parseData = function(pathTree, jsonDataset, currentPath = {}) {
+export function processData (cache, jsonDataset, onMap = {}) {
+	if (onMap && Object.keys(onMap).length)
+		cache.onMap = onMap;
+
+	parseData(cache.pathTree, jsonDataset);
+
+	return cache.results;
+}
+
+
+
+/*
+
+  # Second step: Parse data
+
+    */
+
+var parseData = (pathTree, jsonDataset, currentPath = {}) => {
 	var currentKey = (Object.keys(currentPath).length) ? flattenPath(currentPath) : "",
 			pathKeys = (isObject(pathTree)) ? Object.keys(pathTree) : null;
 
 
 	 //
-	// Exclude object from remapping on match ...
+	// Exclude object from remapping on matching keys
 
-	if (typeof cache.excludeRules[currentKey] === 'undefined')
-		cache.excludeRules[currentKey] = false;
+	if (typeof cache.excludeRules[currentKey] !== 'undefined') {
+		var ruleKeys = Object.keys(cache.excludeRules[currentKey]),
+		    test = Object.keys(jsonDataset);
 
-	if (pathKeys.includes('__excludeOnMatch')) {
-		var excludeRules = pathTree['__excludeOnMatch'];
+		ruleKeys.forEach((key) => {
+			var rules = cache.excludeRules[currentKey][key];
 
-		if (isArray(excludeRules)) {
-			for (var i = 0; i < excludeRules.length; i++) {
-				var rule = excludeRules[i];
-
-				if (typeof rule === 'string') {
-					if (Object.keys(jsonDataset).includes( removeDotPrefix(rule) )){
-						cache.excludeRules[currentKey] = true;
-						return false;
-					}
-				} // else: [to-do]
-			};
-		}
-	} else {
-		cache.excludeRules[currentKey] = false;
+			rules.forEach((rule) => {
+				if (test.indexOf(removeDotPrefix(rule)) !== -1)
+					cache.exclude[key] = true;
+			})
+		});
 	}
 
 
-	if (pathKeys && cache.excludeRules[currentKey] == false) {
+	if (pathKeys) {
 		pathKeys.forEach((pathKey) => {
 
 
@@ -328,14 +349,15 @@ var parseData = function(pathTree, jsonDataset, currentPath = {}) {
 		 //
 		// Wrapping up after looping all properties at a level
 
-		if (typeof cache.this[currentKey] !== 'undefined') {
+		if (typeof cache.this[currentKey] !== 'undefined' &&
+		    typeof cache.exclude[currentKey] === 'undefined') {
 			var objectRef = cache.this[currentKey]
 
 			linkObjects(cache.this[currentKey], cache.thisRemap[objectRef])
 		}
 
-		if (currentKey)
-			delete cache.excludeRules[currentKey];
+		if (typeof cache.exclude[currentKey] !== 'undefined')
+			delete cache.exclude[currentKey];
 	}
 }
 
@@ -343,7 +365,7 @@ var parseData = function(pathTree, jsonDataset, currentPath = {}) {
  //
 // To use when generating objects
 
-var linkObjects = function (thisObjectRef, thisRemap) {
+var linkObjects = (thisObjectRef, thisRemap) => {
 
 	var arrayAt = thisRemap.lastIndexOf('#'),
 	    thisRemap = removeDotPrefix(thisRemap);
@@ -486,7 +508,7 @@ var mergeObjects = function (object, merge) {
 
     */
 
-var parseInstructions = function (instructions, currentPath = {}) {
+var parseInstructions = (instructions, currentPath = {}) => {
 	var instructionKeys = Object.keys(instructions),
 	    currentKey = flattenPath(currentPath);
 
@@ -548,7 +570,7 @@ var parseInstructions = function (instructions, currentPath = {}) {
 							else
 								cache.remap[instructionKey].push(objectRef +" "+ instructionKey);
 						}
-					}/* else {
+					} else {
 
 						if (Object.keys(cache.currentObjects).length)
 							var objectRef = arrayLastItem(Object.keys(cache.currentObjects))
@@ -562,13 +584,21 @@ var parseInstructions = function (instructions, currentPath = {}) {
 									objectRef +" "+ flattenPath(cache.currentObjects[objectRef]) +" "+ instructionKey;
 							}
 						} else {
-							if (remap) {
-								cache.remap[remapKey] = currentKey +" "+ remap[1];
+							if (currentKey) {
+								if (remap) {
+									cache.remap[remapKey] = currentKey +" "+ remap[1];
+								} else {
+									cache.remap[currentKey +" "+ instructionKey] = currentKey +" "+ instructionKey
+								}
 							} else {
-								cache.remap[currentKey +" "+ instructionKey] = currentKey +" "+ instructionKey
+								if (remap) {
+									cache.remap[remapKey] = remap[1];
+								} else {
+									cache.remap[currentKey +" "+ instructionKey] = instructionKey
+								}
 							}
 						}
-					}*/
+					}
 
 					if (currentKey) {
 						if (remap)
@@ -828,10 +858,66 @@ var parseInstructions = function (instructions, currentPath = {}) {
 			}
 
 
+
 			 //
-			// Left-hand conditional keys with struct objects
+			// Left-hand conditional keys with defined objects
+
 			if (typeof object === 'object' && 
 			    '_' == instructionKey.charAt(0)) {
+
+				if (instructionKeys.includes('__excludeOnKeyMatch')) {
+					var excludeRules = instructions['__excludeOnKeyMatch'];
+
+					if (isArray(excludeRules)) {
+						for (var i = 0; i < excludeRules.length; i++) {
+							var rule = excludeRules[i];
+
+							if (typeof rule === 'string' && rule.indexOf(' ') == -1) {
+								if (currentKey) {
+									if (typeof cache.excludeRules[currentKey] === 'undefined')
+										cache.excludeRules[currentKey] = {};
+
+									if (typeof cache.excludeRules[currentKey][currentKey] === 'undefined')
+										cache.excludeRules[currentKey][currentKey] = []
+
+									cache.excludeRules[currentKey][currentKey].push(rule);
+
+								} else {
+									if (typeof cache.excludeRules[""] === 'undefined')
+										cache.excludeRules[""] = {};
+
+									if (typeof cache.excludeRules[""][""] === 'undefined')
+										cache.excludeRules[""][""] = []
+
+									cache.excludeRules[""][""].push(rule);
+								}
+							}
+
+							if (typeof rule === 'string' && rule.indexOf(' ') >= 0) {
+								var [rulePath, ruleKey] = popLastKeyItem(rule);
+								if (currentKey) {
+									if (typeof cache.excludeRules[currentKey+" "+rulePath] === 'undefined')
+										cache.excludeRules[currentKey+" "+rulePath] = {};
+
+									if (typeof cache.excludeRules[currentKey+" "+rulePath][currentKey] === 'undefined')
+										cache.excludeRules[currentKey+" "+rulePath][currentKey] = []
+
+									cache.excludeRules[currentKey+" "+rulePath][currentKey].push(rule)
+
+								} else {
+									if (typeof cache.excludeRules[rulePath] === 'undefined')
+										cache.excludeRules[rulePath] = {};
+
+									if (typeof cache.excludeRules[rulePath][""] === 'undefined')
+										cache.excludeRules[rulePath][""] = []
+
+									cache.excludeRules[rulePath][""].push(rule)
+								}
+							}
+						};
+					}
+					return false;
+				}
 
 				if (conditionalKey.includes(instructionKey)) {
 					if (currentKey)
