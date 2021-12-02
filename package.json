@@ -1,0 +1,19 @@
+{
+  "name": "jsonion-remap",
+  "description": "",
+  "version": "0.1.0",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jsonion/remap.git"
+  },
+  "keywords": ["remap", "json", "objects", "schema", "regex"],
+  "author": "Blaž Beuermann <blazbrmnn@yahoo.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jsonion/remap/issues"
+  },
+  "homepage": "https://github.com/jsonion/remap"
+}
