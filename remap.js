@@ -113,6 +113,7 @@ var parseData = function(pathTree, jsonDataset, currentPath = {}) {
 	if (pathKeys && cache.excludeRules[currentKey] == false) {
 		pathKeys.forEach((pathKey) => {
 
+
 			 //
 			// Skip if a path isn't found in JSON object
 
@@ -142,6 +143,10 @@ var parseData = function(pathTree, jsonDataset, currentPath = {}) {
 				conditions.forEach((condition) => {
 					iCondition++;
 
+
+					 //
+					// Conditional struct with possible embedded variables
+
 					var struct = -1;
 					if (isObject(condition)) {
 						for (var i = 0; i < Object.keys(condition).length; i++) {
@@ -151,10 +156,6 @@ var parseData = function(pathTree, jsonDataset, currentPath = {}) {
 					    	break;
 						}
 					}
-
-
-					 //
-					// Conditional struct with possible embedded variables
 
 					if (struct != -1 &&
 					    ('.' == pathKey.charAt(0))) {
@@ -254,9 +255,11 @@ var parseData = function(pathTree, jsonDataset, currentPath = {}) {
 
 
 					 //
-					// This is the leaf, ants
+					// This is the leaf
 
-					if (typeof condition === 'function' || typeof condition === 'undefined') {
+					if (typeof condition === 'function' || 
+					    typeof condition === 'undefined' ||
+					    condition == null) {
 
 						var result,
 						    input = (typeof jsonDataset[ removeDotPrefix(pathKey) ] !== 'undefined')
@@ -270,8 +273,13 @@ var parseData = function(pathTree, jsonDataset, currentPath = {}) {
 						if (typeof cache.remap[currentKey +" "+ pathKey] !== 'undefined' &&
 						    result !== false) {
 
-							var remap = popFirstKeyItem(cache.remap[currentKey +" "+ pathKey][iCondition]),
-							    order = Object.keys(cache.remap).indexOf(currentKey +" "+ pathKey);
+							if (currentKey) {
+								var remap = popFirstKeyItem(cache.remap[currentKey +" "+ pathKey][iCondition]),
+								    order = Object.keys(cache.remap).indexOf(currentKey +" "+ pathKey);
+							} else {
+								var remap = popFirstKeyItem(cache.remap[pathKey][iCondition]),
+								    order = Object.keys(cache.remap).indexOf(pathKey);
+							}
 
 							if(typeof cache.objects[remap[0]] === 'undefined')
 								cache.objects[remap[0]] = [];
@@ -356,6 +364,7 @@ var linkObjects = function (thisObjectRef, thisRemap) {
 
       createObject = {};
 
+
   cache.objects[thisObjectRef].forEach((object) => {
   	count = count+1;
   	total = total + object.__order;
@@ -382,7 +391,9 @@ var linkObjects = function (thisObjectRef, thisRemap) {
    //
   // Generate object path
 
-  createObject = generateObjectPath(route, createObject);
+  if (route.length)
+  	createObject = generateObjectPath(route, createObject);
+
 
   if (objectRef) {
   	cache.objects[objectRef].push({...createObject, __order: avg});
@@ -511,7 +522,8 @@ var parseInstructions = function (instructions, currentPath = {}) {
 				if (structKey != -1 && typeof object[structKey] === 'object') {
 
 					var remap = getRemapKeys(instructionKey),
-					    remapKey = (remap) ? currentKey +" "+ remap[0] : false;
+					    remapKey = (remap && currentKey) ? currentKey +" "+ remap[0] : false,
+					    remapKey = (!remapKey && remap) ? remap[0] : remapKey;
 
 
 					if (instructions['this']) {
@@ -531,7 +543,10 @@ var parseInstructions = function (instructions, currentPath = {}) {
 						if (remap) {
 							cache.remap[remapKey].push(objectRef +" "+ remap[1]);
 						} else {
-							cache.remap[currentKey +" "+ instructionKey].push(objectRef +" "+ instructionKey);
+							if (currentKey)
+								cache.remap[currentKey +" "+ instructionKey].push(objectRef +" "+ instructionKey);
+							else
+								cache.remap[instructionKey].push(objectRef +" "+ instructionKey);
 						}
 					}/* else {
 
@@ -555,10 +570,17 @@ var parseInstructions = function (instructions, currentPath = {}) {
 						}
 					}*/
 
-					if (remap)
-						var path = mergeDistinctPaths(transformToPath(currentKey), transformToPath(remap[0], [object]));
-					else
-						var path = mergeDistinctPaths(transformToPath(currentKey), transformToPath(instructionKey, [object]));
+					if (currentKey) {
+						if (remap)
+							var path = mergeDistinctPaths(transformToPath(currentKey), transformToPath(remap[0], [object]));
+						else
+							var path = mergeDistinctPaths(transformToPath(currentKey), transformToPath(instructionKey, [object]));
+					} else {
+						if (remap)
+							var path = transformToPath(remap[0], [object]);
+						else
+							var path = transformToPath(instructionKey, [object]);	
+					}
 
 					cache.pathTree = mergePathTree(cache.pathTree, path);
 
@@ -575,6 +597,7 @@ var parseInstructions = function (instructions, currentPath = {}) {
 					var nextKey = mergeDistinctPaths(currentPath, instructionKey);
 				}
 
+
 				Object.keys(cache.currentObjects).forEach((key) => {
 					cache.currentObjects[key] = mergeDistinctPaths(cache.currentObjects[key], instructionKey);
 				});
@@ -589,15 +612,22 @@ var parseInstructions = function (instructions, currentPath = {}) {
 			// Defining an object at path with "this"
 
 			if ('this' == instructionKey && typeof object === 'string') {
-				cache.this[ currentKey ] = object;
 				cache.currentObjects[object] = null;
+
+				if (currentKey)
+					cache.this[ currentKey ] = object;
+				else
+					cache.this[''] = object;
 
 				if (typeof instructions['remap'] !== 'undefined') {
 					cache.thisRemap[object] = spaceBeforeDot(instructions['remap']);
 				}
 
 				if (!Object.keys(cache.thisRemap).length) {
-					cache.thisRemap[object] = currentKey;
+					if (currentKey)
+						cache.thisRemap[object] = currentKey;
+					else
+						cache.thisRemap[object] = '';
 				}
 
 				return;
@@ -609,10 +639,17 @@ var parseInstructions = function (instructions, currentPath = {}) {
 
 			if ('remap' == instructionKey && typeof object === 'string') {
 				if (getObjectRef(object)) {
-					if (typeof cache.remap[ currentKey ] === 'undefined')
-						cache.remap[ currentKey ] = [];
+					if (currentKey) {
+						if (typeof cache.remap[ currentKey ] === 'undefined')
+							cache.remap[ currentKey ] = [];
 
-					cache.remap[ currentKey ].push(spaceBeforeDot(object));
+						cache.remap[ currentKey ].push(spaceBeforeDot(object));
+					} else {
+						if (typeof cache.remap[''] === 'undefined')
+							cache.remap[''] = [];
+
+						cache.remap[''].push(spaceBeforeDot(object));
+					}
 					return;
 				}
 			}
@@ -631,22 +668,43 @@ var parseInstructions = function (instructions, currentPath = {}) {
 				var remap = getRemapKeys(instructionKey),
 				    objectRef = getObjectRef(remap[1]);
 
-				if (typeof cache.remap[currentKey +" "+ remap[0]] === 'undefined')
-					cache.remap[currentKey +" "+ remap[0]] = [];
+				if (currentKey) {
+					if (typeof cache.remap[currentKey +" "+ remap[0]] === 'undefined')
+						cache.remap[currentKey +" "+ remap[0]] = [];
+				} else {
+					if (typeof cache.remap[remap[0]] === 'undefined')
+						cache.remap[remap[0]] = [];
+				}
 
 				if (objectRef) {
-					if (Object.keys(cache.currentObjects).indexOf(objectRef) !== -1)
-						cache.remap[ currentKey +" "+ remap[0] ].push(spaceBeforeDot(remap[1]));
+					if (Object.keys(cache.currentObjects).indexOf(objectRef) !== -1) {
+						if (currentKey)
+							cache.remap[ currentKey +" "+ remap[0] ].push(spaceBeforeDot(remap[1]));
+						else
+							cache.remap[ remap[0] ].push(spaceBeforeDot(remap[1]));
+					}
 
 				} else {
+
 					objectRef = arrayLastItem(Object.keys(cache.currentObjects));
+
 					if (objectRef) {
-						if (cache.currentObjects[ objectRef ]) {
-							cache.remap[ currentKey +" "+ remap[0] ]
-							.push( objectRef +" "+ flattenPath(cache.currentObjects[objectRef]) +" "+ remap[1] );
+						if (currentKey) {
+							if (cache.currentObjects[ objectRef ]) {
+								cache.remap[ currentKey +" "+ remap[0] ]
+								.push( objectRef +" "+ flattenPath(cache.currentObjects[objectRef]) +" "+ remap[1] );
+							} else {
+								cache.remap[ currentKey +" "+ remap[0] ]
+								.push( objectRef +" "+ remap[1] );
+							}
 						} else {
-							cache.remap[ currentKey +" "+ remap[0] ]
-							.push( objectRef +" "+ remap[1] );
+							if (cache.currentObjects[ objectRef ]) {
+								cache.remap[ remap[0] ]
+								.push( objectRef +" "+ flattenPath(cache.currentObjects[objectRef]) +" "+ remap[1] );
+							} else {
+								cache.remap[ remap[0] ]
+								.push( objectRef +" "+ remap[1] );
+							}
 						}
 					}
 				}
@@ -658,11 +716,19 @@ var parseInstructions = function (instructions, currentPath = {}) {
 
 			if (instructions['this'] && !isInlineRemap(instructionKey) && instructionKey !== 'remap') {
 				if (cache.currentObjects[instructions['this']] !== 'undefined') {
-					if (typeof cache.remap[ currentKey +" "+ instructionKey ] === 'undefined')
-						cache.remap[ currentKey +" "+ instructionKey ] = [];
+					if (currentKey) {
+						if (typeof cache.remap[ currentKey +" "+ instructionKey ] === 'undefined')
+							cache.remap[ currentKey +" "+ instructionKey ] = [];
 
-					cache.remap[ currentKey +" "+ instructionKey ]
-					.push( instructions['this'] +" "+ instructionKey );
+						cache.remap[ currentKey +" "+ instructionKey ]
+						.push( instructions['this'] +" "+ instructionKey );
+					} else {
+						if (typeof cache.remap[ instructionKey ] === 'undefined')
+							cache.remap[ instructionKey ] = [];
+
+						cache.remap[ instructionKey ]
+						.push( instructions['this'] +" "+ instructionKey );
+					}
 				}
 			}
 
@@ -672,11 +738,19 @@ var parseInstructions = function (instructions, currentPath = {}) {
 
 			if (instructions['remap'] && !isInlineRemap(instructionKey) && instructionKey !== 'remap' && !instructions['this']) {
 				if (cache.currentObjects) {
-					if (typeof cache.remap[ currentKey +" "+ instructionKey ] === 'undefined')
-						cache.remap[ currentKey +" "+ instructionKey ] = [];
+					if (currentKey) {
+						if (typeof cache.remap[ currentKey +" "+ instructionKey ] === 'undefined')
+							cache.remap[ currentKey +" "+ instructionKey ] = [];
 
-					cache.remap[ currentKey +" "+ instructionKey ]
-					.push( spaceBeforeDot(instructions['remap']) +" "+ instructionKey );
+						cache.remap[ currentKey +" "+ instructionKey ]
+						.push( spaceBeforeDot(instructions['remap']) +" "+ instructionKey );
+					} else {
+						if (typeof cache.remap[ instructionKey ] === 'undefined')
+							cache.remap[ instructionKey ] = [];
+
+						cache.remap[ instructionKey ]
+						.push( spaceBeforeDot(instructions['remap']) +" "+ instructionKey );
+					}
 				}
 			}
 
@@ -688,15 +762,28 @@ var parseInstructions = function (instructions, currentPath = {}) {
 				} else {
 					objectRef = arrayLastItem(Object.keys(cache.currentObjects));
 					if (objectRef) {
-						if (typeof cache.remap[ currentKey +" "+ instructionKey ])
-							cache.remap[ currentKey +" "+ instructionKey ] = [];
+						if (currentKey) {
+							if (typeof cache.remap[ currentKey +" "+ instructionKey ])
+								cache.remap[ currentKey +" "+ instructionKey ] = [];
 
-						if (cache.currentObjects[ objectRef ]) {
-							cache.remap[ currentKey +" "+ instructionKey ]
-							.push( objectRef +" "+ flattenPath(cache.currentObjects[objectRef]) +" "+ instructionKey );
+							if (cache.currentObjects[ objectRef ]) {
+								cache.remap[ currentKey +" "+ instructionKey ]
+								.push( objectRef +" "+ flattenPath(cache.currentObjects[objectRef]) +" "+ instructionKey );
+							} else {
+								cache.remap[ currentKey +" "+ instructionKey ]
+								.push( objectRef +" "+ instructionKey );
+							}
 						} else {
-							cache.remap[ currentKey +" "+ instructionKey ]
-							.push( objectRef +" "+ instructionKey );
+							if (typeof cache.remap[ instructionKey ])
+								cache.remap[ instructionKey ] = [];
+
+							if (cache.currentObjects[ objectRef ]) {
+								cache.remap[ instructionKey ]
+								.push( objectRef +" "+ flattenPath(cache.currentObjects[objectRef]) +" "+ instructionKey );
+							} else {
+								cache.remap[ instructionKey ]
+								.push( objectRef +" "+ instructionKey );
+							}
 						}
 					}
 				}
@@ -706,13 +793,21 @@ var parseInstructions = function (instructions, currentPath = {}) {
 				// Right-hand object contains a schema definition
 
 				if (typeof object === 'string') {
-					var objectPath = transformToPath(currentKey +" "+ instructionKey, [validateType(object)]);
+					if (currentKey)
+						var objectPath = transformToPath(currentKey +" "+ instructionKey, [validateType(object)]);
+					else
+						var objectPath = transformToPath(instructionKey, [validateType(object)]);
+
 					cache.pathTree = mergePathTree(cache.pathTree, objectPath);
 					return;
 				}
 
 				if (typeof object === 'function') {
-					var objectPath = transformToPath(currentKey +" "+ instructionKey, [object]);
+					if (currentKey)
+						var objectPath = transformToPath(currentKey +" "+ instructionKey, [object]);
+					else
+						var objectPath = transformToPath(instructionKey, [object]);
+
 					cache.pathTree = mergePathTree(cache.pathTree, objectPath);
 					return;
 				}
@@ -722,7 +817,11 @@ var parseInstructions = function (instructions, currentPath = {}) {
 				// Right-hand object can be of any type
 
 				if (object === null) {
-					var objectPath = transformToPath(currentKey +" "+ instructionKey, [null]);
+					if (currentKey)
+						var objectPath = transformToPath(currentKey +" "+ instructionKey, [null]);
+					else
+						var objectPath = transformToPath(instructionKey, [null]);
+
 					cache.pathTree = mergePathTree(cache.pathTree, objectPath);
 					return;
 				}
@@ -735,8 +834,11 @@ var parseInstructions = function (instructions, currentPath = {}) {
 			    '_' == instructionKey.charAt(0)) {
 
 				if (conditionalKey.includes(instructionKey)) {
+					if (currentKey)
+						var objectPath = transformToPath(currentKey +" "+ instructionKey, object);
+					else
+						var objectPath = transformToPath(instructionKey, object);
 
-					var objectPath = transformToPath(currentKey +" "+ instructionKey, object);
 					cache.pathTree = mergePathTree(cache.pathTree, objectPath);
 					return;
 				}
