@@ -165,8 +165,11 @@ var seedPosts = [
   },
 ];
 
-var ctx = {},
-    ctx.Facebook.displayName = "Sant Applause";
+var ctx = {
+  Facebook: {
+    displayName: "Sant Applause"
+  }
+}
 
 var postsPreparsed = new remap(posts);
 
