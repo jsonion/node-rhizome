@@ -1,2 +1,4 @@
-module.exports = require('./remap.js');
-module.exports.remap = require('./remap.js')('remap');
+import runRemap, { remap } from './remap.js'
+
+export default runRemap;
+export { remap };

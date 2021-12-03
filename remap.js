@@ -54,7 +54,7 @@ export class remap {
 		this.parseInstructions(instructions)
 	}
 
-	run = function (jsonDataset, context = {}, onMap = {}) {
+	run (jsonDataset, context = {}, onMap = {}) {
 		if (context && Object.keys(context).length)
 			this.cache.context = context;
 
@@ -89,7 +89,7 @@ export class remap {
 
     */
 
-	parseData = (pathTree, jsonDataset, currentPath = {}) => {
+	parseData (pathTree, jsonDataset, currentPath = {}) {
 		var currentKey = (Object.keys(currentPath).length) ? flattenPath(currentPath) : "",
 				pathKeys = (isObject(pathTree)) ? Object.keys(pathTree) : null;
 
@@ -346,7 +346,7 @@ export class remap {
 	 //
 	// To use when generating objects
 
-	linkObjects = (thisObjectRef, thisRemap) => {
+	linkObjects (thisObjectRef, thisRemap) {
 
 		var arrayAt = thisRemap.lastIndexOf('#'),
 		    thisRemap = removeDotPrefix(thisRemap);
@@ -417,7 +417,7 @@ export class remap {
 
 	    */
 
-	parseInstructions = (instructions, currentPath = {}) => {
+	parseInstructions (instructions, currentPath = {}) {
 		var instructionKeys = Object.keys(instructions),
 		    currentKey = flattenPath(currentPath);
 

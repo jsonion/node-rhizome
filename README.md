@@ -80,15 +80,19 @@ var posts = {
 			__type: types.stringDecode,
 			__oneOf: [
 				{
+					regex: '{displayName} shared an event\.',
+					type: 'shared_event'
+				},
+				{
 					regex: '{displayName} was attending (.*) at (.*)[\.]*',
 					type: 'attended_event',
 					0: 'event_name',
 					1: 'place_name'
 				},
 				{
-					regex: '{displayName} was at (.*)[\.]*',
-					type: 'was_at',
-					0: 'place_name'
+					regex: '{displayName} shared a video from the playlist (.*)[\.]*',
+					type: 'shared_video_from_playlist',
+					0: 'playlist'
 				}
 			]},
 
@@ -99,7 +103,7 @@ var posts = {
 			'.uri': types.string,
 			'.creation_timestamp': types.timestampRoundToMinute,
 			'.title': types.stringDecodeNotEmpty,
-			'.description': types.stringDecode,
+			'.description': types.stringDecodeNotEmpty,
 
 			'.media_metadata .photo_metadata': {
 				remap: 'media.photo_metadata',
@@ -166,7 +170,7 @@ var ctx = {},
 
 var postsPreparsed = new remap(posts);
 
-console.log(postsPreparsed) // … returns internal state
+console.log(postsPreparsed.cache) // … returns internal state
 
 console.log(postsPreparsed.run(seedPosts, ctx.Facebook)); /*
 
