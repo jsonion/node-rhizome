@@ -387,7 +387,22 @@ export class remap {
 	  if (typeof this.cache.onMap !== 'undefined' &&
 	 	    typeof this.cache.onMap[thisObjectRef] === 'function') {
 
-	  	this.cache.onMap[thisObjectRef].call(null, thisObjectRef, createObject, this.cache.results.length);
+	  	if (this.cache.results !== null){
+
+	  		if (route.length && route != '#') {
+	  			var results = resolveRoute(route, this.cache.results);
+	  		} else {
+	  			var results = this.cache.results;
+	  		}
+
+	  		if (typeof results !== 'undefined')
+	  			this.cache.onMap[thisObjectRef].call(null, thisObjectRef, createObject, results.length);
+	  		else
+	  			this.cache.onMap[thisObjectRef].call(null, thisObjectRef, createObject, 0);
+
+	  	}	else {
+	  		this.cache.onMap[thisObjectRef].call(null, thisObjectRef, createObject, 0);
+	  	}
 	  }
 
 
@@ -999,6 +1014,34 @@ var mergeDistinctPaths = function (rootPath, mergeObj) {
 			}
 		} else
 			return mergeObj;
+	}
+}
+
+
+
+ //
+// Resolve a route in jsonion style (until the first array is found)
+
+var resolveRoute = function (route, object) {
+	if (typeof route === 'string') {
+		var path = route.split(" "),
+		    key = path[0];
+		route = route[key];
+
+		if (typeof object[key] !== 'undefined')
+			return resolveRoute(route, object[key]);
+
+	} else {
+		if (typeof route === 'object') {
+			var key = Object.keys(route);
+			route = route[key]
+
+			if (typeof object[key] !== 'undefined')
+				return resolveRoute(route, object[key])
+
+		} else {
+			return object
+		}
 	}
 }
 

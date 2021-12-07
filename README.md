@@ -32,7 +32,7 @@ console.log(runRemap(remapInstructions, testObject)); // Should output {resultSt
 
 ### Main class is exported as "remap" 
 
-The main benefit of using "remap" class object is that it enables reusing preparsed properties for multiple JavaScript objects. The following example a Facebook JSON archive is remapped to a more flat form, with additional perks showcased.
+The main benefit of using "remap" class object is that it enables reusing preparsed properties for multiple JavaScript objects. In the following example a Facebook JSON archive is remapped to a more flat form, with additional perks showcased.
 
 ```javascript
 import { remap } from 'jsonion-remap';
