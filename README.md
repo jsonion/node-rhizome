@@ -182,11 +182,12 @@ Should return a bunch of objects that feel much lighter to work with.
 */
 ```
 
+
 ### Including and excluding objects from dataset based on schema
 
 By introducing simple include and exclude rules, data objects are either included or excluded from remapping to the resulting dataset.
 
-Using `__includeOnFullMatch` key at a given object level, objects are included when all keys, defined in an array, are matched.
+Using `__includeOnFullMatch` key at a given level in the schema, objects are included when all keys, defined in an array, are matched.
 
 With `__excludeOnKeyMatch` the opposite holds true. When any key, defined in an array, appears in the object, the object is excluded from remapping.
 
@@ -197,7 +198,8 @@ var event_responses = {
 
 	'.event_responses .events_joined #': {
 		this: 'event',
-		type: 'events_joined',
+
+		'type': 'events_joined', // … an arbitrarily defined key
 
 		'.name': types.stringDecode,
 		'.start_timestamp': types.number,

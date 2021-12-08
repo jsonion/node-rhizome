@@ -5,10 +5,11 @@
     */
 
 
-var reservedKeys = ['this', 'remap'];
-var conditionalStruct = ['__oneOf']; // __anyOf
-var conditionalType = ['__type'];
-var conditionalKey = ['__includeOnFullMatch', '__excludeOnKeyMatch'];
+var reservedKeys = ['this', 'remap'],
+    conditionalStruct = ['__oneOf']; // __anyOf?
+
+//  conditionalKey = ['__includeOnFullMatch', '__excludeOnKeyMatch'];
+//  conditionalType = ['__type'];
 
 export default function runRemap (instructions, jsonDataset, context = {}, onMap = {}) {
 	return new remap(instructions).run(jsonDataset, context, onMap)
@@ -96,19 +97,19 @@ export class remap {
 
 	parseData (pathTree, jsonDataset, currentPath = {}) {
 		var currentKey = (Object.keys(currentPath).length) ? flattenPath(currentPath) : "",
-				pathKeys = (isObject(pathTree)) ? Object.keys(pathTree) : null;
+				pathKeys = (isObject(pathTree)) ? Object.keys(pathTree) : null,
 
+		    ruleKeys, test, rules;
 
 		 //
 		// Exclude object from remapping on matching keys
 
 		if (typeof this.cache.excludeRules[currentKey] !== 'undefined') {
-			var ruleKeys = Object.keys(this.cache.excludeRules[currentKey]),
+			ruleKeys = Object.keys(this.cache.excludeRules[currentKey]);
 			    test = Object.keys(jsonDataset);
 
 			ruleKeys.forEach((key) => {
-				var rules = this.cache.excludeRules[currentKey][key];
-
+				rules = this.cache.excludeRules[currentKey][key];
 				rules.forEach((rule) => {
 					if (test.indexOf(removeDotPrefix(rule)) !== -1)
 						this.cache.exclude[key] = true;
@@ -121,16 +122,15 @@ export class remap {
 		// Include object after matching all required keys
 
 		if (typeof this.cache.includeRules[currentKey] !== 'undefined') {
-			var ruleKeys = Object.keys(this.cache.includeRules[currentKey]),
+			ruleKeys = Object.keys(this.cache.includeRules[currentKey]);
 			    test = Object.keys(jsonDataset);
 
 			ruleKeys.forEach((key) => {
-				var rules = this.cache.includeRules[currentKey][key];
-
+				rules = this.cache.includeRules[currentKey][key];
 				rules.forEach((rule) => {
 					if (this.cache.include[key] !== false) {
 
-						if (test.indexOf(removeDotPrefix(rule)) != -1)
+						if (test.indexOf(removeDotPrefix(rule)) !== -1)
 							this.cache.include[key] = true;
 						else
 							this.cache.include[key] = false;
@@ -143,10 +143,11 @@ export class remap {
 		if (pathKeys) {
 			pathKeys.forEach((pathKey) => {
 
+
 				 //
 				// Skip if a path isn't found in JSON object
 
-				if ('.' == pathKey.charAt(0) && isObject(jsonDataset) &&
+				if ('.' === pathKey.charAt(0) && isObject(jsonDataset) &&
 				    !Object.keys(jsonDataset).includes(removeDotPrefix(pathKey)))
 					return false;
 
@@ -161,52 +162,55 @@ export class remap {
 				    iCondition = -1,
 				    object = (isObject(pathTree[pathKey])) ? pathTree[pathKey] : null;
 
-
+				var nextKey;
 				if (!Object.keys(currentPath).length)
-					var nextKey = { [pathKey]: null }
+					nextKey = { [pathKey]: null }
 				else
-					var nextKey = mergeDistinctPaths(currentPath, pathKey);
+					nextKey = mergeDistinctPaths(currentPath, pathKey);
 
 
 				if (conditions) {
 					conditions.forEach((condition) => {
 						iCondition++;
 
+						var i,
+						    input, result,
+						    merge;
 
 						 //
 						// Conditional struct with possible embedded variables
 
 						var struct = -1;
 						if (isObject(condition)) {
-							for (var i = 0; i < Object.keys(condition).length; i++) {
-								if (struct == -1)
-						    	struct = (struct == -1) ? conditionalStruct.indexOf(Object.keys(condition)[i]) : -1;
+							for (i = 0; i < Object.keys(condition).length; i++) {
+								if (struct === -1)
+						    	struct = (struct === -1) ? conditionalStruct.indexOf(Object.keys(condition)[i]) : -1;
 						    else
 						    	break;
 							}
 						}
 
-						if (struct != -1 &&
-						    ('.' == pathKey.charAt(0))) {
+						if (struct !== -1 &&
+						    '.' === pathKey.charAt(0)) {
 
 							if (isArray(condition[ conditionalStruct[struct] ]) && 
 							    'undefined' !== typeof jsonDataset[ removeDotPrefix(pathKey) ] &&
 							    'object' !== typeof jsonDataset[ removeDotPrefix(pathKey) ]) {
 
-								var input = jsonDataset[ removeDotPrefix(pathKey) ],
-								    buffer,
-								    result = {};
+								var validator, buffer;
+
+								input = jsonDataset[ removeDotPrefix(pathKey) ];
 
 								// Type check and transforms
 								if (typeof condition['__type'] === 'string')
-									var validator = validateType(condition['__type']);
+									validator = validateType(condition['__type']);
 								if (typeof condition['__type'] === 'function')
-									var validator = condition['__type'];
+									validator = condition['__type'];
 								if (typeof validator !== 'undefined')
 									input = validator.call(null, input);
 
 								if (input) {
-									for (var i = 0; i < condition[ conditionalStruct[struct] ].length; i++) {
+									for (i = 0; i < condition[ conditionalStruct[struct] ].length; i++) {
 
 										var conditionObj = condition[ conditionalStruct[struct] ][i],
 										    keys = Object.keys(condition[ conditionalStruct[struct] ][i]);
@@ -230,11 +234,12 @@ export class remap {
 												}
 
 												if (!error) {
-													var buffer = jsonDataset[ removeDotPrefix(pathKey) ].match(regex, 'i'),
-													    obj = condition[ conditionalStruct[struct] ],
+													var obj = condition[ conditionalStruct[struct] ],
 													    objClone = {};
 
-													if ('__oneOf' == conditionalStruct[struct]) {
+													buffer = jsonDataset[ removeDotPrefix(pathKey) ].match(regex, 'i');
+
+													if ('__oneOf' === conditionalStruct[struct]) {
 														if (buffer) {
 															for (var j = 0; j < keys.length; j++) {
 
@@ -272,8 +277,8 @@ export class remap {
 											this.cache.objects[remap[0]] = [];
 
 										if(isArray(remap)) {
-											var merge = transformToPath(removeDotPrefix(remap[1]), result);
-											    merge["__order"] = order;
+											merge = transformToPath(removeDotPrefix(remap[1]), result);
+											merge["__order"] = order;
 
 											this.cache.objects[remap[0]].push(mergePathTree(this.cache.objects[remap[0]], merge))
 										}
@@ -290,9 +295,8 @@ export class remap {
 						    typeof condition === 'undefined' ||
 						    condition == null) {
 
-							var result,
-							    input = (typeof jsonDataset[ removeDotPrefix(pathKey) ] !== 'undefined')
-							  ? jsonDataset[ removeDotPrefix(pathKey) ] : null;
+							input = (typeof jsonDataset[ removeDotPrefix(pathKey) ] !== 'undefined')
+							 ? jsonDataset[ removeDotPrefix(pathKey) ] : null;
 
 							if (typeof condition === 'function')
 								result = condition.call(null, input);
@@ -303,27 +307,26 @@ export class remap {
 							    result !== false) {
 
 								if (currentKey) {
-									var remap = popFirstKeyItem(this.cache.remap[currentKey +" "+ pathKey][iCondition]),
-									    order = Object.keys(this.cache.remap).indexOf(currentKey +" "+ pathKey);
+									remap = popFirstKeyItem(this.cache.remap[currentKey +" "+ pathKey][iCondition]);
+									order = Object.keys(this.cache.remap).indexOf(currentKey +" "+ pathKey);
 								} else {
-									var remap = popFirstKeyItem(this.cache.remap[pathKey][iCondition]),
-									    order = Object.keys(this.cache.remap).indexOf(pathKey);
+									remap = popFirstKeyItem(this.cache.remap[pathKey][iCondition]);
+									order = Object.keys(this.cache.remap).indexOf(pathKey);
 								}
 
 								if(typeof this.cache.objects[remap[0]] === 'undefined')
 									this.cache.objects[remap[0]] = [];
 
 								if(isArray(remap) && typeof result !== 'undefined') {
-									var merge = transformToPath(removeDotPrefix(remap[1]), result);
-									    merge["__order"] = order;
+									merge = transformToPath(removeDotPrefix(remap[1]), result);
+									merge["__order"] = order;
 
 									this.cache.objects[remap[0]].push(mergePathTree(this.cache.objects[remap[0]], merge))
 								}
 							}
 						}
 
-						 //
-						// End of "condition" loop
+						/* End of "condition" loop */
 					});
 				}
 
@@ -333,7 +336,7 @@ export class remap {
 					 //
 					// The loop
 
-					if ('#' == pathKey.charAt(0) && isArray(jsonDataset)) {
+					if ('#' === pathKey.charAt(0) && isArray(jsonDataset)) {
 
 						jsonDataset.forEach((object) => {
 							this.parseData(pathTree[pathKey], object, nextKey)
@@ -343,7 +346,7 @@ export class remap {
 					 //
 					// The path
 
-					if ('.' == pathKey.charAt(0)) {
+					if ('.' === pathKey.charAt(0)) {
 
 						if (typeof jsonDataset[ removeDotPrefix(pathKey) ] !== 'undefined') {
 							this.parseData(pathTree[pathKey], jsonDataset[ removeDotPrefix(pathKey) ], nextKey)
@@ -351,6 +354,9 @@ export class remap {
 					}
 				}
 
+
+
+				var remap, order;
 
 				 //
 				// An arbitrary variable to set
@@ -360,11 +366,11 @@ export class remap {
 				    "_" !== pathKey.charAt(0)) {
 
 					if (currentKey) {
-						var remap = popFirstKeyItem(this.cache.remap[currentKey +" "+ pathKey][0]),
-						    order = Object.keys(this.cache.remap).indexOf(currentKey +" "+ pathKey);
+						remap = popFirstKeyItem(this.cache.remap[currentKey +" "+ pathKey][0]);
+						order = Object.keys(this.cache.remap).indexOf(currentKey +" "+ pathKey);
 					} else {
-						var remap = popFirstKeyItem(this.cache.remap[pathKey][0]),
-						    order = Object.keys(this.cache.remap).indexOf(pathKey);
+						remap = popFirstKeyItem(this.cache.remap[pathKey][0]);
+						order = Object.keys(this.cache.remap).indexOf(pathKey);
 					}
 
 					var merge = transformToPath(remap[1], pathTree[pathKey]);
@@ -386,7 +392,7 @@ export class remap {
 				var objectRef = this.cache.this[currentKey]
 
 				if (typeof this.cache.include[currentKey] !== 'undefined' && 
-				    this.cache.include[currentKey] == true)
+				    this.cache.include[currentKey] === true)
 					this.linkObjects(this.cache.this[currentKey], this.cache.thisRemap[objectRef])
 				
 				if (typeof this.cache.include[currentKey] === 'undefined')
@@ -407,13 +413,13 @@ export class remap {
 
 	linkObjects (thisObjectRef, thisRemap) {
 
-		var arrayAt = thisRemap.lastIndexOf('#'),
-		    thisRemap = removeDotPrefix(thisRemap);
+		thisRemap = removeDotPrefix(thisRemap);
 
+		var objectRef, route;
 		if (Object.keys(this.cache.objects).length > 1) {
-			var [objectRef, route] = popFirstKeyItem(thisRemap);
+			[objectRef, route] = popFirstKeyItem(thisRemap);
 		} else {
-			var route = thisRemap
+			route = thisRemap
 		}
 		
 
@@ -448,10 +454,11 @@ export class remap {
 
 	  	if (this.cache.results !== null){
 
-	  		if (route.length && route != '#') {
-	  			var results = resolveRoute(route, this.cache.results);
+	  		var results;
+	  		if ('#' !== route && route.length) {
+	  			results = resolveRoute(route, this.cache.results);
 	  		} else {
-	  			var results = this.cache.results;
+	  			results = this.cache.results;
 	  		}
 
 	  		if (typeof results !== 'undefined')
@@ -499,24 +506,31 @@ export class remap {
 		if (instructionKeys) {
 
 			instructionKeys.forEach((instructionKey) => {
-				var object = instructions[instructionKey];
+
+				var object = instructions[instructionKey],
+
+				    objectRef, objectPath, isCurrentObject,
+				    remap, remapKey,
+				    path,
+				    i,
+				    rule, rulePath;
 
 
 				 //
 				// Parsing instruction path
 
 				if (typeof object === 'object' && object !== null && 
-				    ('.' == instructionKey.charAt(0) ||
-				     '#' == instructionKey.charAt(0))) {
+				    ('.' === instructionKey.charAt(0) ||
+				     '#' === instructionKey.charAt(0))) {
 
 
 					 //
 					// The one case to resolve here comes as a conditional struct
 
 					var structKey = -1;
-					for (var i = 0; i <= Object.keys(object).length; i++) {
-						if (structKey == -1) {
-				    	structKey = (conditionalStruct.indexOf(Object.keys(object)[i]) != -1)
+					for (i = 0; i <= Object.keys(object).length; i++) {
+						if (structKey === -1) {
+				    	structKey = (conditionalStruct.indexOf(Object.keys(object)[i]) !== -1)
 				    	             ? Object.keys(object)[i] : -1
 						} else {
 				    	break;
@@ -524,20 +538,21 @@ export class remap {
 					}
 
 
-					if (structKey != -1 && typeof object[structKey] === 'object') {
+					if (structKey !== -1 && typeof object[structKey] === 'object') {
 
-						var remap = getRemapKeys(instructionKey),
-						    remapKey = (remap && currentKey) ? currentKey +" "+ remap[0] : false,
-						    remapKey = (!remapKey && remap) ? remap[0] : remapKey;
+						remap = getRemapKeys(instructionKey);
+
+						remapKey = (remap && currentKey) ? currentKey +" "+ remap[0] : false;
+						remapKey = (!remapKey && remap) ? remap[0] : remapKey;
 
 
 						if (instructions['this']) {
-							var objectRef = instructions['this'],
-							    isCurrentObject = true
+							objectRef = instructions['this'];
+							isCurrentObject = true
 						} else {
-							var objectRef = getObjectRef(instructionKey),
-						      isCurrentObject = (objectRef)
-						        ? Object.keys(this.cache.currentObjects).indexOf(objectRef) : -1;
+							objectRef = getObjectRef(instructionKey);
+						  isCurrentObject = (objectRef)
+						   ? Object.keys(this.cache.currentObjects).indexOf(objectRef) : -1;
 						}
 
 
@@ -556,7 +571,7 @@ export class remap {
 						} else {
 
 							if (Object.keys(this.cache.currentObjects).length)
-								var objectRef = arrayLastItem(Object.keys(this.cache.currentObjects))
+								objectRef = arrayLastItem(Object.keys(this.cache.currentObjects))
 
 							if (objectRef) {
 								if (remap) {
@@ -585,14 +600,14 @@ export class remap {
 
 						if (currentKey) {
 							if (remap)
-								var path = mergeDistinctPaths(transformToPath(currentKey), transformToPath(remap[0], [object]));
+								path = mergeDistinctPaths(transformToPath(currentKey), transformToPath(remap[0], [object]));
 							else
-								var path = mergeDistinctPaths(transformToPath(currentKey), transformToPath(instructionKey, [object]));
+								path = mergeDistinctPaths(transformToPath(currentKey), transformToPath(instructionKey, [object]));
 						} else {
 							if (remap)
-								var path = transformToPath(remap[0], [object]);
+								path = transformToPath(remap[0], [object]);
 							else
-								var path = transformToPath(instructionKey, [object]);	
+								path = transformToPath(instructionKey, [object]);	
 						}
 
 						this.cache.pathTree = mergePathTree(this.cache.pathTree, path);
@@ -604,10 +619,11 @@ export class remap {
 					 //
 					// Else, parse path instructions when right-hand value is a deeper object
 					
+					var nextKey;
 					if (!Object.keys(currentPath).length) {
-						var nextKey = { [instructionKey]: null }
+						nextKey = { [instructionKey]: null }
 					} else {
-						var nextKey = mergeDistinctPaths(currentPath, instructionKey);
+						nextKey = mergeDistinctPaths(currentPath, instructionKey);
 					}
 
 
@@ -624,7 +640,7 @@ export class remap {
 				 //
 				// Defining an object at path with "this"
 
-				if ('this' == instructionKey && typeof object === 'string') {
+				if ('this' === instructionKey && typeof object === 'string') {
 					this.cache.currentObjects[object] = null;
 
 					if (currentKey)
@@ -650,7 +666,7 @@ export class remap {
 				 //
 				// Explicit remap and a declared object
 
-				if ('remap' == instructionKey && typeof object === 'string') {
+				if ('remap' === instructionKey && typeof object === 'string') {
 					if (getObjectRef(object)) {
 						if (currentKey) {
 							if (typeof this.cache.remap[ currentKey ] === 'undefined')
@@ -678,8 +694,8 @@ export class remap {
 				// Inline remap
 
 				if (isInlineRemap(instructionKey)) {
-					var remap = getRemapKeys(instructionKey),
-					    objectRef = getObjectRef(remap[1]);
+					remap = getRemapKeys(instructionKey);
+					objectRef = getObjectRef(remap[1]);
 
 					if (currentKey) {
 						if (typeof this.cache.remap[currentKey +" "+ remap[0]] === 'undefined')
@@ -728,7 +744,7 @@ export class remap {
 				// Remapping to the current object (defined with "this")
 
 				if (instructions['this'] && !isInlineRemap(instructionKey) && instructionKey !== 'remap') {
-					if ('.' == instructionKey.charAt(0)) {
+					if ('.' === instructionKey.charAt(0)) {
 						if (this.cache.currentObjects[instructions['this']] !== 'undefined') {
 							if (currentKey) {
 								if (typeof this.cache.remap[ currentKey +" "+ instructionKey ] === 'undefined')
@@ -749,9 +765,9 @@ export class remap {
 
 
 				 //
-				// Left-hand key after an explicit remap
+				// Resolve left-hand key after an explicit remap (without a defined object on level)
 
-				if (instructionKey !== 'remap' && !isInlineRemap(instructionKey) &&
+				if ('remap' !== instructionKey && !isInlineRemap(instructionKey) &&
 				    instructions['remap'] && !instructions['this']) {
 					if (this.cache.currentObjects) {
 						if (currentKey) {
@@ -774,11 +790,15 @@ export class remap {
 				 //
 				// 
 
-				if ('remap' !== instructionKey) {
+				if ('remap' !== instructionKey &&
+				    'this' !== instructionKey) {
+
 					objectRef = arrayLastItem(Object.keys(this.cache.currentObjects));
-					if (objectRef) {
+
+					if (typeof objectRef !== 'undefined' &&
+					    objectRef.length) {
 						if (currentKey) {
-							if (typeof this.cache.remap[ currentKey +" "+ instructionKey ])
+							if (typeof this.cache.remap[ currentKey +" "+ instructionKey ] === 'undefined')
 								this.cache.remap[ currentKey +" "+ instructionKey ] = [];
 
 							if (this.cache.currentObjects[ objectRef ]) {
@@ -789,7 +809,7 @@ export class remap {
 								.push( objectRef +" "+ instructionKey );
 							}
 						} else {
-							if (typeof this.cache.remap[ instructionKey ])
+							if (typeof this.cache.remap[ instructionKey ] === 'undefined')
 								this.cache.remap[ instructionKey ] = [];
 
 							if (this.cache.currentObjects[ objectRef ]) {
@@ -813,12 +833,12 @@ export class remap {
 					 //
 					// Right-hand object contains a type validation
 
-					if ('.' == instructionKey.charAt(0)) {
+					if ('.' === instructionKey.charAt(0)) {
 						if (typeof object === 'string') {
 							if (currentKey)
-								var objectPath = transformToPath(currentKey +" "+ instructionKey, [validateType(object)]);
+								objectPath = transformToPath(currentKey +" "+ instructionKey, [validateType(object)]);
 							else
-								var objectPath = transformToPath(instructionKey, [validateType(object)]);
+								objectPath = transformToPath(instructionKey, [validateType(object)]);
 
 							this.cache.pathTree = mergePathTree(this.cache.pathTree, objectPath);
 							return;
@@ -826,9 +846,9 @@ export class remap {
 
 						if (typeof object === 'function') {
 							if (currentKey)
-								var objectPath = transformToPath(currentKey +" "+ instructionKey, [object]);
+								objectPath = transformToPath(currentKey +" "+ instructionKey, [object]);
 							else
-								var objectPath = transformToPath(instructionKey, [object]);
+								objectPath = transformToPath(instructionKey, [object]);
 
 							this.cache.pathTree = mergePathTree(this.cache.pathTree, objectPath);
 							return;
@@ -840,9 +860,9 @@ export class remap {
 
 						if (object === null) {
 							if (currentKey)
-								var objectPath = transformToPath(currentKey +" "+ instructionKey, [null]);
+								objectPath = transformToPath(currentKey +" "+ instructionKey, [null]);
 							else
-								var objectPath = transformToPath(instructionKey, [null]);
+								objectPath = transformToPath(instructionKey, [null]);
 
 							this.cache.pathTree = mergePathTree(this.cache.pathTree, objectPath);
 							return;
@@ -853,15 +873,15 @@ export class remap {
 					 //
 					// Arbitrary setting of keys
 
-					if ('.' != instructionKey.charAt(0) &&
-					    '_' != instructionKey.charAt(0) &&
-					    '#' != instructionKey.charAt(0) &&
+					if ('.' !== instructionKey.charAt(0) &&
+					    '_' !== instructionKey.charAt(0) &&
+					    '#' !== instructionKey.charAt(0) &&
 					    !reservedKeys.includes(instructionKey)) {
 
 						if (currentKey)
-							var objectPath = transformToPath(currentKey +" "+ instructionKey, object);
+							objectPath = transformToPath(currentKey +" "+ instructionKey, object);
 						else
-							var objectPath = transformToPath(instructionKey, object);
+							objectPath = transformToPath(instructionKey, object);
 
 						this.cache.pathTree = mergePathTree(this.cache.pathTree, objectPath);
 						return;
@@ -869,21 +889,20 @@ export class remap {
 				}
 
 
-
 				 //
-				// Left-hand conditional keys with defined objects
+				// Left-hand conditional keys with defined arrays of rules
 
 				if (typeof object === 'object' && 
-				    '_' == instructionKey.charAt(0)) {
+				    '_' === instructionKey.charAt(0)) {
 
-					if ('__includeOnFullMatch' == instructionKey) {
+					if ('__includeOnFullMatch' === instructionKey) {
 						var includeRules = instructions['__includeOnFullMatch'];
 
 						if (isArray(includeRules)) {
-							for (var i = 0; i < includeRules.length; i++) {
-								var rule = includeRules[i];
+							for (i = 0; i < includeRules.length; i++) {
+								rule = includeRules[i];
 
-								if (typeof rule === 'string' && rule.indexOf(' ') == -1) {
+								if (typeof rule === 'string' && rule.indexOf(' ') === -1) {
 									if (currentKey) {
 										if (typeof this.cache.includeRules[currentKey] === 'undefined')
 											this.cache.includeRules[currentKey] = {};
@@ -905,7 +924,8 @@ export class remap {
 								}
 
 								if (typeof rule === 'string' && rule.indexOf(' ') >= 0) {
-									var [rulePath, ruleKey] = popLastKeyItem(rule);
+									rulePath = popLastKeyItem(rule)[0];
+
 									if (currentKey) {
 										if (typeof this.cache.includeRules[currentKey+" "+rulePath] === 'undefined')
 											this.cache.includeRules[currentKey+" "+rulePath] = {};
@@ -927,17 +947,16 @@ export class remap {
 								}
 							};
 						}
-						return false;
 					}
 
-					if ('__excludeOnKeyMatch' == instructionKey) {
+					if ('__excludeOnKeyMatch' === instructionKey) {
 						var excludeRules = instructions['__excludeOnKeyMatch'];
 
 						if (isArray(excludeRules)) {
-							for (var i = 0; i < excludeRules.length; i++) {
-								var rule = excludeRules[i];
+							for (i = 0; i < excludeRules.length; i++) {
+								rule = excludeRules[i];
 
-								if (typeof rule === 'string' && rule.indexOf(' ') == -1) {
+								if (typeof rule === 'string' && rule.indexOf(' ') === -1) {
 									if (currentKey) {
 										if (typeof this.cache.excludeRules[currentKey] === 'undefined')
 											this.cache.excludeRules[currentKey] = {};
@@ -959,7 +978,8 @@ export class remap {
 								}
 
 								if (typeof rule === 'string' && rule.indexOf(' ') >= 0) {
-									var [rulePath, ruleKey] = popLastKeyItem(rule);
+									rulePath = popLastKeyItem(rule)[0];
+
 									if (currentKey) {
 										if (typeof this.cache.excludeRules[currentKey+" "+rulePath] === 'undefined')
 											this.cache.excludeRules[currentKey+" "+rulePath] = {};
@@ -981,17 +1001,6 @@ export class remap {
 								}
 							};
 						}
-						return false;
-					}
-
-					if (conditionalKey.includes(instructionKey)) {
-						if (currentKey)
-							var objectPath = transformToPath(currentKey +" "+ instructionKey, object);
-						else
-							var objectPath = transformToPath(instructionKey, object);
-
-						this.cache.pathTree = mergePathTree(this.cache.pathTree, objectPath);
-						return;
 					}
 				}
 			});
@@ -1030,12 +1039,14 @@ var isInlineRemap = (key) => {
 	return (key.indexOf('=>') !== -1) ? true : false 
 }
 
+/*
 var isDeep = (key) => { 
 	return (key.indexOf(' ') !== -1) ? true : false 
 }
+*/
 
 var removeDotPrefix = (key) => {
-	if (key.charAt(0) == '.') {
+	if ('.' === key.charAt(0)) {
 		key = key.substring(1)
 	}
 	return key.replaceAll(" .", " ");
@@ -1164,8 +1175,10 @@ var mergeDistinctPaths = function (rootPath, mergeObj) {
 // Resolve a route in jsonion style (until the first array is found)
 
 var resolveRoute = function (route, object) {
+	var key;
+
 	if (typeof route === 'string') {
-		var path = route.split(" "),
+		var path = route.split(" ");
 		    key = path[0];
 		route = route[key];
 
@@ -1174,14 +1187,14 @@ var resolveRoute = function (route, object) {
 
 	} else {
 		if (typeof route === 'object') {
-			var key = Object.keys(route);
-			route = route[key]
+			key = Object.keys(route);
+			route = route[key];
 
 			if (typeof object[key] !== 'undefined')
-				return resolveRoute(route, object[key])
+				return resolveRoute(route, object[key]);
 
 		} else {
-			return object
+			return object;
 		}
 	}
 }
@@ -1248,7 +1261,7 @@ var generateObjectPath = function (key, object) {
 	keys.forEach((pathObject) => {
 
 		if (path) {
-			if (pathObject == '#') {
+			if (pathObject === '#') {
 				path = [path];
 			} else {
 				path = {
@@ -1258,7 +1271,7 @@ var generateObjectPath = function (key, object) {
 
 		} else {
 
-			if (pathObject == '#') {
+			if (pathObject === '#') {
 				path = [object];
 			} else {
 				path = {
@@ -1278,7 +1291,7 @@ var generateObjectPath = function (key, object) {
 
 var mergeObjects = function (object, merge) {
 
-	var object = (typeof object === 'object') ? object : null;
+	object = (typeof object === 'object') ? object : null;
 
 	if (isArray(object) && isArray(merge)) {
 		return object.concat(merge);
@@ -1314,7 +1327,7 @@ var mergeObjects = function (object, merge) {
 var getRemapKeys = function (key) {
 	var remap = key.split('=>')
 
-	if (remap.length == 2) {
+	if (remap.length === 2) {
 		remap[0] = remap[0].trim();
 		remap[1] = remap[1].trim();
 
@@ -1411,6 +1424,7 @@ var isNumber = function (object) {
 }
 
 
+/*
 var removeArrayItem = function (array, key) {
 	var index = array.indexOf(key);
 
@@ -1420,10 +1434,11 @@ var removeArrayItem = function (array, key) {
   	return false;
   }
 }
+*/
 
 
 var arrayLastItem = function (array) {
-	if (array.length == 1) {
+	if (array.length === 1) {
 		return array[0];
 	}
 	if (array.length > 1) {
@@ -1440,7 +1455,7 @@ var removeDoubleSpace = function (string) {
 	while (condition !== true) {
 		string = string.replace("  ", " ");
 
-		if(string.length == length)
+		if(string.length === length)
 			condition = true;
 	}
 
