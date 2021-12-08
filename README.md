@@ -32,7 +32,7 @@ console.log(runRemap(remapInstructions, testObject)); // Should output {resultSt
 
 ### Main class is exported as "remap" 
 
-The main benefit of using "remap" class object is that it enables reusing preparsed properties for multiple JavaScript objects. In the following example a Facebook JSON archive is remapped to a more flat form, with additional perks showcased.
+The main benefit of using "remap" class object is that it enables reusing preparsed properties for multiple JavaScript objects. In the following example a Facebook JSON archive is remapped to a more flat form, with some additional perks showcased.
 
 ```javascript
 import { remap } from 'jsonion-remap';
@@ -180,4 +180,45 @@ console.log(postsPreparsed.run(seedPosts, ctx.Facebook)); /*
 Should return a bunch of objects that feel much lighter to work with.
 
 */
+```
+
+### Including and excluding objects from dataset based on schema
+
+By introducing simple include and exclude rules, data objects are either included or excluded from remapping to the resulting dataset.
+
+Using `__includeOnFullMatch` key at a given object level, objects are included when all keys, defined in an array, are matched.
+
+With `__excludeOnKeyMatch` the opposite holds true. When any key, defined in an array, appears in the object, the object is excluded from remapping.
+
+```javascript
+import { remap } from 'jsonion-remap';
+
+var event_responses = {
+
+	'.event_responses .events_joined #': {
+		this: 'event',
+		type: 'events_joined',
+
+		'.name': types.stringDecode,
+		'.start_timestamp': types.number,
+		'.end_timestamp': types.number,
+
+		__includeOnFullMatch: ['.name', '.start_timestamp', '.end_timestamp'],
+		__excludeOnKeyMatch: ['.description', '.place', '.create_timestamp']
+	}
+};
+
+var eventsObject = {
+  "event_responses": {
+    "events_joined": [
+      {
+        "name": "Cube of Truth: Ljubljana: February 15th",
+        "start_timestamp": 1550250000,
+        "end_timestamp": 1550257200
+      }
+    ]
+  }
+}
+
+console.log(runRemap(event_responses, eventsObject)); // What do you think, will this one event get through?
 ```

@@ -5,9 +5,10 @@
     */
 
 
+var reservedKeys = ['this', 'remap'];
 var conditionalStruct = ['__oneOf']; // __anyOf
 var conditionalType = ['__type'];
-var conditionalKey = ['__excludeOnKeyMatch'];
+var conditionalKey = ['__includeOnFullMatch', '__excludeOnKeyMatch'];
 
 export default function runRemap (instructions, jsonDataset, context = {}, onMap = {}) {
 	return new remap(instructions).run(jsonDataset, context, onMap)
@@ -41,10 +42,12 @@ export class remap {
 			// Custom handles on created objects
 			onMap: {},
 
-			// Exclude rules as defined with remap schema 
+			// Include and exclude rules as defined with remap schema 
+			includeRules: {},
 			excludeRules: {},
 
-			// Temporary instructions to exclude objects
+			// Temporary instructions to include and exclude objects
+			include: {},
 			exclude: {},
 
 			results: null,
@@ -74,6 +77,7 @@ export class remap {
 			thisRemap: this.cache.thisRemap,
 			objects: {},
 			onMap: {},
+			includeRules: this.cache.includeRules,
 			excludeRules: this.cache.excludeRules,
 			exclude: {},
 			results: null,
@@ -82,6 +86,7 @@ export class remap {
 
 		return results;
 	}
+
 
 	/*
 
@@ -107,7 +112,30 @@ export class remap {
 				rules.forEach((rule) => {
 					if (test.indexOf(removeDotPrefix(rule)) !== -1)
 						this.cache.exclude[key] = true;
-				})
+				});
+			});
+		}
+
+
+		 //
+		// Include object after matching all required keys
+
+		if (typeof this.cache.includeRules[currentKey] !== 'undefined') {
+			var ruleKeys = Object.keys(this.cache.includeRules[currentKey]),
+			    test = Object.keys(jsonDataset);
+
+			ruleKeys.forEach((key) => {
+				var rules = this.cache.includeRules[currentKey][key];
+
+				rules.forEach((rule) => {
+					if (this.cache.include[key] !== false) {
+
+						if (test.indexOf(removeDotPrefix(rule)) != -1)
+							this.cache.include[key] = true;
+						else
+							this.cache.include[key] = false;
+					}
+				});
 			});
 		}
 
@@ -115,11 +143,10 @@ export class remap {
 		if (pathKeys) {
 			pathKeys.forEach((pathKey) => {
 
-
 				 //
 				// Skip if a path isn't found in JSON object
 
-				if (isObject(jsonDataset) && pathKey !== '#' &&
+				if ('.' == pathKey.charAt(0) && isObject(jsonDataset) &&
 				    !Object.keys(jsonDataset).includes(removeDotPrefix(pathKey)))
 					return false;
 
@@ -321,9 +348,33 @@ export class remap {
 						if (typeof jsonDataset[ removeDotPrefix(pathKey) ] !== 'undefined') {
 							this.parseData(pathTree[pathKey], jsonDataset[ removeDotPrefix(pathKey) ], nextKey)
 						}
-					}	
+					}
 				}
 
+
+				 //
+				// An arbitrary variable to set
+
+				if ("." !== pathKey.charAt(0) && 
+				    "#" !== pathKey.charAt(0) &&
+				    "_" !== pathKey.charAt(0)) {
+
+					if (currentKey) {
+						var remap = popFirstKeyItem(this.cache.remap[currentKey +" "+ pathKey][0]),
+						    order = Object.keys(this.cache.remap).indexOf(currentKey +" "+ pathKey);
+					} else {
+						var remap = popFirstKeyItem(this.cache.remap[pathKey][0]),
+						    order = Object.keys(this.cache.remap).indexOf(pathKey);
+					}
+
+					var merge = transformToPath(remap[1], pathTree[pathKey]);
+					    merge["__order"] = order;
+
+					if (typeof this.cache.objects[remap[0]] === 'undefined')
+						this.cache.objects[remap[0]] = [];
+
+					this.cache.objects[remap[0]].push(mergePathTree(this.cache.objects[remap[0]], merge))
+				}
 			});
 
 
@@ -334,11 +385,19 @@ export class remap {
 			    typeof this.cache.exclude[currentKey] === 'undefined') {
 				var objectRef = this.cache.this[currentKey]
 
-				this.linkObjects(this.cache.this[currentKey], this.cache.thisRemap[objectRef])
+				if (typeof this.cache.include[currentKey] !== 'undefined' && 
+				    this.cache.include[currentKey] == true)
+					this.linkObjects(this.cache.this[currentKey], this.cache.thisRemap[objectRef])
+				
+				if (typeof this.cache.include[currentKey] === 'undefined')
+					this.linkObjects(this.cache.this[currentKey], this.cache.thisRemap[objectRef])
 			}
 
 			if (typeof this.cache.exclude[currentKey] !== 'undefined')
 				delete this.cache.exclude[currentKey];
+
+			if (typeof this.cache.include[currentKey] !== 'undefined') 
+				delete this.cache.include[currentKey];
 		}
 	}
 
@@ -666,22 +725,24 @@ export class remap {
 
 
 				 //
-				// Defined object and remap by its rule
+				// Remapping to the current object (defined with "this")
 
 				if (instructions['this'] && !isInlineRemap(instructionKey) && instructionKey !== 'remap') {
-					if (this.cache.currentObjects[instructions['this']] !== 'undefined') {
-						if (currentKey) {
-							if (typeof this.cache.remap[ currentKey +" "+ instructionKey ] === 'undefined')
-								this.cache.remap[ currentKey +" "+ instructionKey ] = [];
+					if ('.' == instructionKey.charAt(0)) {
+						if (this.cache.currentObjects[instructions['this']] !== 'undefined') {
+							if (currentKey) {
+								if (typeof this.cache.remap[ currentKey +" "+ instructionKey ] === 'undefined')
+									this.cache.remap[ currentKey +" "+ instructionKey ] = [];
 
-							this.cache.remap[ currentKey +" "+ instructionKey ]
-							.push( instructions['this'] +" "+ instructionKey );
-						} else {
-							if (typeof this.cache.remap[ instructionKey ] === 'undefined')
-								this.cache.remap[ instructionKey ] = [];
+								this.cache.remap[ currentKey +" "+ instructionKey ]
+								.push( instructions['this'] +" "+ instructionKey );
+							} else {
+								if (typeof this.cache.remap[ instructionKey ] === 'undefined')
+									this.cache.remap[ instructionKey ] = [];
 
-							this.cache.remap[ instructionKey ]
-							.push( instructions['this'] +" "+ instructionKey );
+								this.cache.remap[ instructionKey ]
+								.push( instructions['this'] +" "+ instructionKey );
+							}
 						}
 					}
 				}
@@ -690,7 +751,8 @@ export class remap {
 				 //
 				// Left-hand key after an explicit remap
 
-				if (instructions['remap'] && !isInlineRemap(instructionKey) && instructionKey !== 'remap' && !instructions['this']) {
+				if (instructionKey !== 'remap' && !isInlineRemap(instructionKey) &&
+				    instructions['remap'] && !instructions['this']) {
 					if (this.cache.currentObjects) {
 						if (currentKey) {
 							if (typeof this.cache.remap[ currentKey +" "+ instructionKey ] === 'undefined')
@@ -709,72 +771,97 @@ export class remap {
 				}
 
 
-				if (instructionKey !== 'remap') {
-					if (isInlineRemap(instructionKey)) {
-						instructionKey = getRemapKeys(instructionKey)[0]; // ... resolved already
+				 //
+				// 
 
-					} else {
-						objectRef = arrayLastItem(Object.keys(this.cache.currentObjects));
-						if (objectRef) {
-							if (currentKey) {
-								if (typeof this.cache.remap[ currentKey +" "+ instructionKey ])
-									this.cache.remap[ currentKey +" "+ instructionKey ] = [];
+				if ('remap' !== instructionKey) {
+					objectRef = arrayLastItem(Object.keys(this.cache.currentObjects));
+					if (objectRef) {
+						if (currentKey) {
+							if (typeof this.cache.remap[ currentKey +" "+ instructionKey ])
+								this.cache.remap[ currentKey +" "+ instructionKey ] = [];
 
-								if (this.cache.currentObjects[ objectRef ]) {
-									this.cache.remap[ currentKey +" "+ instructionKey ]
-									.push( objectRef +" "+ flattenPath(this.cache.currentObjects[objectRef]) +" "+ instructionKey );
-								} else {
-									this.cache.remap[ currentKey +" "+ instructionKey ]
-									.push( objectRef +" "+ instructionKey );
-								}
+							if (this.cache.currentObjects[ objectRef ]) {
+								this.cache.remap[ currentKey +" "+ instructionKey ]
+								.push( objectRef +" "+ flattenPath(this.cache.currentObjects[objectRef]) +" "+ instructionKey );
 							} else {
-								if (typeof this.cache.remap[ instructionKey ])
-									this.cache.remap[ instructionKey ] = [];
+								this.cache.remap[ currentKey +" "+ instructionKey ]
+								.push( objectRef +" "+ instructionKey );
+							}
+						} else {
+							if (typeof this.cache.remap[ instructionKey ])
+								this.cache.remap[ instructionKey ] = [];
 
-								if (this.cache.currentObjects[ objectRef ]) {
-									this.cache.remap[ instructionKey ]
-									.push( objectRef +" "+ flattenPath(this.cache.currentObjects[objectRef]) +" "+ instructionKey );
-								} else {
-									this.cache.remap[ instructionKey ]
-									.push( objectRef +" "+ instructionKey );
-								}
+							if (this.cache.currentObjects[ objectRef ]) {
+								this.cache.remap[ instructionKey ]
+								.push( objectRef +" "+ flattenPath(this.cache.currentObjects[objectRef]) +" "+ instructionKey );
+							} else {
+								this.cache.remap[ instructionKey ]
+								.push( objectRef +" "+ instructionKey );
 							}
 						}
 					}
 
 
 					 //
-					// Right-hand object contains a schema definition
+					// All remapping paths have been resolved thus far into code
 
-					if (typeof object === 'string') {
-						if (currentKey)
-							var objectPath = transformToPath(currentKey +" "+ instructionKey, [validateType(object)]);
-						else
-							var objectPath = transformToPath(instructionKey, [validateType(object)]);
+					if (isInlineRemap(instructionKey))
+						instructionKey = getRemapKeys(instructionKey)[0];
 
-						this.cache.pathTree = mergePathTree(this.cache.pathTree, objectPath);
-						return;
-					}
 
-					if (typeof object === 'function') {
-						if (currentKey)
-							var objectPath = transformToPath(currentKey +" "+ instructionKey, [object]);
-						else
-							var objectPath = transformToPath(instructionKey, [object]);
+					 //
+					// Right-hand object contains a type validation
 
-						this.cache.pathTree = mergePathTree(this.cache.pathTree, objectPath);
-						return;
+					if ('.' == instructionKey.charAt(0)) {
+						if (typeof object === 'string') {
+							if (currentKey)
+								var objectPath = transformToPath(currentKey +" "+ instructionKey, [validateType(object)]);
+							else
+								var objectPath = transformToPath(instructionKey, [validateType(object)]);
+
+							this.cache.pathTree = mergePathTree(this.cache.pathTree, objectPath);
+							return;
+						}
+
+						if (typeof object === 'function') {
+							if (currentKey)
+								var objectPath = transformToPath(currentKey +" "+ instructionKey, [object]);
+							else
+								var objectPath = transformToPath(instructionKey, [object]);
+
+							this.cache.pathTree = mergePathTree(this.cache.pathTree, objectPath);
+							return;
+						}
+
+
+						 //
+						// Right-hand object is null and value can be of any type
+
+						if (object === null) {
+							if (currentKey)
+								var objectPath = transformToPath(currentKey +" "+ instructionKey, [null]);
+							else
+								var objectPath = transformToPath(instructionKey, [null]);
+
+							this.cache.pathTree = mergePathTree(this.cache.pathTree, objectPath);
+							return;
+						}
 					}
 
 
 					 //
-					// Right-hand object can be of any type
+					// Arbitrary setting of keys
 
-					if (object === null) {
+					if ('.' != instructionKey.charAt(0) &&
+					    '_' != instructionKey.charAt(0) &&
+					    '#' != instructionKey.charAt(0) &&
+					    !reservedKeys.includes(instructionKey)) {
+
 						if (currentKey)
-							var objectPath = transformToPath(currentKey +" "+ instructionKey, [null]);
+							var objectPath = transformToPath(currentKey +" "+ instructionKey, object);
 						else
-							var objectPath = transformToPath(instructionKey, [null]);
+							var objectPath = transformToPath(instructionKey, object);
 
 						this.cache.pathTree = mergePathTree(this.cache.pathTree, objectPath);
 						return;
@@ -789,7 +876,61 @@ export class remap {
 				if (typeof object === 'object' && 
 				    '_' == instructionKey.charAt(0)) {
 
-					if (instructionKeys.includes('__excludeOnKeyMatch')) {
+					if ('__includeOnFullMatch' == instructionKey) {
+						var includeRules = instructions['__includeOnFullMatch'];
+
+						if (isArray(includeRules)) {
+							for (var i = 0; i < includeRules.length; i++) {
+								var rule = includeRules[i];
+
+								if (typeof rule === 'string' && rule.indexOf(' ') == -1) {
+									if (currentKey) {
+										if (typeof this.cache.includeRules[currentKey] === 'undefined')
+											this.cache.includeRules[currentKey] = {};
+
+										if (typeof this.cache.includeRules[currentKey][currentKey] === 'undefined')
+											this.cache.includeRules[currentKey][currentKey] = []
+
+										this.cache.includeRules[currentKey][currentKey].push(rule);
+
+									} else {
+										if (typeof this.cache.includeRules[""] === 'undefined')
+											this.cache.includeRules[""] = {};
+
+										if (typeof this.cache.includeRules[""][""] === 'undefined')
+											this.cache.includeRules[""][""] = []
+
+										this.cache.includeRules[""][""].push(rule);
+									}
+								}
+
+								if (typeof rule === 'string' && rule.indexOf(' ') >= 0) {
+									var [rulePath, ruleKey] = popLastKeyItem(rule);
+									if (currentKey) {
+										if (typeof this.cache.includeRules[currentKey+" "+rulePath] === 'undefined')
+											this.cache.includeRules[currentKey+" "+rulePath] = {};
+
+										if (typeof this.cache.includeRules[currentKey+" "+rulePath][currentKey] === 'undefined')
+											this.cache.includeRules[currentKey+" "+rulePath][currentKey] = []
+
+										this.cache.includeRules[currentKey+" "+rulePath][currentKey].push(rule)
+
+									} else {
+										if (typeof this.cache.includeRules[rulePath] === 'undefined')
+											this.cache.includeRules[rulePath] = {};
+
+										if (typeof this.cache.includeRules[rulePath][""] === 'undefined')
+											this.cache.includeRules[rulePath][""] = []
+
+										this.cache.includeRules[rulePath][""].push(rule)
+									}
+								}
+							};
+						}
+						return false;
+					}
+
+					if ('__excludeOnKeyMatch' == instructionKey) {
 						var excludeRules = instructions['__excludeOnKeyMatch'];
 
 						if (isArray(excludeRules)) {
