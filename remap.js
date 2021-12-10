@@ -267,7 +267,7 @@ export class remap {
 									};
 								}
 
-								if (Object.keys(result).length) {
+								if (typeof result !== 'undefined' && Object.keys(result).length) {
 									if (typeof this.cache.remap[currentKey +" "+ pathKey] !== 'undefined') {
 
 										var remap = popFirstKeyItem(this.cache.remap[currentKey +" "+ pathKey][iCondition]),
