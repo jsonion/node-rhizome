@@ -1,7 +1,7 @@
 {
   "name": "jsonion-remap",
   "description": "Remapping JSON objects to a simplified, alternative schema is a breeze with **jsonion-remap** package. Instructions, defining how structure and in part content types are transformed, are coded in a JavaScript object with a slightly special syntax that resembles CSS, goes easy on you with the details and is simple to read and understand.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
