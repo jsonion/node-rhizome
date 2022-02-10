@@ -3,7 +3,7 @@ import isAbsoluteUrl from 'is-absolute-url';
 var wordHistogram = [];
 
 var toHistogram = function (objectType, dataNode, index, ctx = {}) {
-  var result;
+  var result = 0, buffer = 0;
 
   switch (objectType) {
     case 'post':
@@ -41,10 +41,13 @@ var toHistogram = function (objectType, dataNode, index, ctx = {}) {
       var string = dataNode['attachments'][0]['media'].title;
 
       if (objectType == 'post')
-        result = updateWordHistogram(string, 'posts', index, '.attachments #0 .media .title');
+        buffer = updateWordHistogram(string, 'posts', index, '.attachments #0 .media .title');
 
       if (objectType == 'comment')
-        result = updateWordHistogram(string, 'comments', index, '.attachments #0 .media .title');
+        buffer = updateWordHistogram(string, 'comments', index, '.attachments #0 .media .title');
+
+      if (buffer)
+        result = result + buffer;
     }
 
     if (typeof dataNode['attachments'][0]['media'].description !== 'undefined' &&
@@ -53,11 +56,14 @@ var toHistogram = function (objectType, dataNode, index, ctx = {}) {
 
       if (objectType == 'post' && 
           dataNode['attachments'][0]['media'].description != dataNode.post)
-        result = updateWordHistogram(string, 'posts', index, '.attachments #0 .media .title');
+        buffer = updateWordHistogram(string, 'posts', index, '.attachments #0 .media .title');
 
       if (objectType == 'comment' && 
           dataNode['attachments'][0]['media'].description != dataNode.comment)
-        result = updateWordHistogram(string, 'comments', index, '.attachments #0 .media .description');
+        buffer = updateWordHistogram(string, 'comments', index, '.attachments #0 .media .description');
+
+      if (buffer)
+        result = result + buffer;
     }     
   }
 

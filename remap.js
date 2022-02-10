@@ -486,14 +486,15 @@ export class remap {
 
 	   //
 	  // Generate object path
-
-	  console.log(route);
-	  console.log(createObject);
+	  /*
+		  console.log(route);
+		  console.log(createObject);
+		*/
 
 	  if (route.length)
 	  	createObject = generateObjectPath(route, createObject);
 
-	  	console.log(createObject);
+	  // console.log(createObject);
 
 
 	  if (objectRef) {
