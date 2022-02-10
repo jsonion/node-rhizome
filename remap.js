@@ -60,7 +60,7 @@ export class remap {
 
 	run (jsonDataset, context = {}, onMap = {}) {
 		if (context && Object.keys(context).length)
-			this.cache.context = context;
+			this.context = context;
 
 		if (onMap && Object.keys(onMap).length)
 			this.cache.onMap = onMap;
@@ -70,7 +70,7 @@ export class remap {
 		var results = this.cache.results;
 
 		this.cache = {
-			context: {},
+			context: this.context,
 			pathTree: this.cache.pathTree,
 			currentObjects: {},
 			this: this.cache.this,
@@ -224,8 +224,8 @@ export class remap {
 												if (embeddedVars.length) {
 													embeddedVars.forEach((variable) => {
 
-														if (typeof this.cache.context[variable] !== 'undefined') {
-															regex = regex.replace('{'+variable+'}', this.cache.context[variable])
+														if (typeof this.context[variable] !== 'undefined') {
+															regex = regex.replace('{'+variable+'}', this.context[variable])
 														} else {
 															error = true
 															this.cache.errors.push({'Missing context': variable})
@@ -453,8 +453,8 @@ export class remap {
 	 	    typeof this.cache.onMap[thisObjectRef] === 'function') {
 
 	  	if (this.cache.results !== null){
+	  		var results, callbackResult;
 
-	  		var results;
 	  		if ('#' !== route && route.length) {
 	  			results = resolveRoute(route, this.cache.results);
 	  		} else {
@@ -462,21 +462,38 @@ export class remap {
 	  		}
 
 	  		if (typeof results !== 'undefined')
-	  			this.cache.onMap[thisObjectRef].call(null, thisObjectRef, createObject, results.length);
+	  			callbackResult = this.cache.onMap[thisObjectRef]
+	  				.call(null, thisObjectRef, createObject, results.length, this.context);
 	  		else
-	  			this.cache.onMap[thisObjectRef].call(null, thisObjectRef, createObject, 0);
+	  			callbackResult = this.cache.onMap[thisObjectRef]
+	  				.call(null, thisObjectRef, createObject, 0, this.context);
 
 	  	}	else {
-	  		this.cache.onMap[thisObjectRef].call(null, thisObjectRef, createObject, 0);
+	  		callbackResult = this.cache.onMap[thisObjectRef]
+	  			.call(null, thisObjectRef, createObject, 0, this.context);
 	  	}
 	  }
 
 
 	   //
+	  // Register augmentation
+
+	  if (callbackResult && typeof createObject["__"] !== 'undefined')
+	  	createObject["__"] = {...createObject, ...callbackResult}; // [!"!!"]
+	  if (callbackResult && typeof createObject["__"] === 'undefined')
+	  	createObject["__"] = callbackResult;
+	  
+
+	   //
 	  // Generate object path
+
+	  console.log(route);
+	  console.log(createObject);
 
 	  if (route.length)
 	  	createObject = generateObjectPath(route, createObject);
+
+	  	console.log(createObject);
 
 
 	  if (objectRef) {
@@ -491,6 +508,7 @@ export class remap {
 
 	  delete this.cache.objects[thisObjectRef]
 	}
+
 
 	/*
 
@@ -1137,7 +1155,6 @@ var mergePathTree = function (pathTree, mergePath) {
 			}
 		}
 	}
-
 
 	return mergePath
 }

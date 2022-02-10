@@ -30,6 +30,7 @@ var remapInstructions = {
 console.log(runRemap(remapInstructions, testObject)); // Should output {resultString: "test"}
 ```
 
+
 ### Main class is exported as "remap" 
 
 The main benefit of using "remap" class object is that it enables reusing preparsed properties for multiple JavaScript objects. In the following example a Facebook JSON archive is remapped to a more flat form, with some additional perks showcased.
